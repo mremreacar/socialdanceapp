@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
@@ -13,9 +14,9 @@ import { MainStackParamList } from '../../types/navigation';
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 
 const mockProducts = [
-  { id: '1', title: 'Salsa Ayakkabısı', price: '₺450', image: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=300', category: 'Ayakkabı' },
-  { id: '2', title: 'Bachata Eteği', price: '₺280', image: 'https://images.unsplash.com/photo-1594631252845-29fc4cc8cde9?w=300', category: 'Kıyafet' },
-  { id: '3', title: 'Tango Pabuç', price: '₺520', image: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=300', category: 'Ayakkabı' },
+  { id: '1', title: 'Salsa Ayakkabısı', price: '₺450', image: 'https://picsum.photos/seed/salsa-shoe/300/200', category: 'Ayakkabı' },
+  { id: '2', title: 'Bachata Eteği', price: '₺280', image: 'https://picsum.photos/seed/dance-skirt/300/200', category: 'Kıyafet' },
+  { id: '3', title: 'Tango Pabuç', price: '₺520', image: 'https://picsum.photos/seed/tango-shoe/300/200', category: 'Ayakkabı' },
 ];
 
 const categories = ['Tümü', 'Ayakkabı', 'Kıyafet', 'Aksesuar'];
@@ -57,7 +58,13 @@ export const MarketplaceScreen: React.FC = () => {
             activeOpacity={0.9}
             style={[styles.card, { backgroundColor: colors.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.cardBorder }]}
           >
-            <Image source={{ uri: item.image }} style={[styles.image, { borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl }]} />
+            <Image
+              source={{ uri: item.image }}
+              style={[styles.image, { borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl }]}
+              contentFit="cover"
+              placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+              transition={200}
+            />
             <View style={{ padding: spacing.md }}>
               <Text style={[typography.bodySmallBold, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
               <Text style={[typography.bodySmallBold, { color: colors.primary }]}>{item.price}</Text>
@@ -80,7 +87,10 @@ export const MarketplaceScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   card: { flex: 1, maxWidth: '48%', overflow: 'hidden' },
-  image: { width: '100%', height: 140, resizeMode: 'cover' },
+  image: {
+    width: '100%',
+    height: 140,
+  },
   fab: { position: 'absolute', zIndex: 10 },
   fabBtn: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
 });

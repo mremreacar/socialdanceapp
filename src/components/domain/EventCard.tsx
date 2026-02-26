@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { useTheme } from '../../theme';
 import { Icon } from '../ui/Icon';
 import { Event } from '../../types/models';
@@ -8,10 +9,18 @@ interface EventCardProps {
   event: Event;
   onPress: () => void;
   variant?: 'list' | 'compact';
+  /** Keşfet sayfası için koyu kart rengi (örn. #341A32). Verilirse yazı/ikon renkleri açık kullanılır. */
+  cardBackgroundColor?: string;
 }
 
-export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 'list' }) => {
+export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 'list', cardBackgroundColor }) => {
   const { colors, spacing, radius, shadows, typography } = useTheme();
+  const isDarkCard = Boolean(cardBackgroundColor);
+  const bgColor = cardBackgroundColor ?? colors.cardBg;
+  const borderColor = cardBackgroundColor ? 'rgba(255,255,255,0.1)' : colors.cardBorder;
+  const textColor = isDarkCard ? '#FFFFFF' : colors.text;
+  const textSecondaryColor = isDarkCard ? 'rgba(255,255,255,0.75)' : colors.textSecondary;
+  const iconColor = isDarkCard ? '#EE2AEE' : colors.primary;
 
   if (variant === 'compact') {
     return (
@@ -21,10 +30,10 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 
         style={[
           styles.compactCard,
           {
-            backgroundColor: colors.cardBg,
+            backgroundColor: bgColor,
             borderRadius: radius.xl,
             borderWidth: 1,
-            borderColor: colors.cardBorder,
+            borderColor: borderColor,
             ...shadows.sm,
           },
         ]}
@@ -36,10 +45,10 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 
           </Text>
         </View>
         <View style={styles.compactContent}>
-          <Text style={[typography.bodySmallBold, { color: colors.text }]} numberOfLines={1}>{event.title}</Text>
-          <View style={styles.row}>
-            <Icon name="map-marker-outline" size={12} color={colors.textTertiary} />
-            <Text style={[typography.caption, { color: colors.textSecondary, marginLeft: 4 }]} numberOfLines={1}>
+<Text style={[typography.bodySmallBold, { color: textColor }]} numberOfLines={1}>{event.title}</Text>
+        <View style={styles.row}>
+            <Icon name="map-marker-outline" size={12} color={iconColor} />
+            <Text style={[typography.caption, { color: textSecondaryColor, marginLeft: 4 }]} numberOfLines={1}>
               {event.location}
             </Text>
           </View>
@@ -55,10 +64,10 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 
       style={[
         styles.listCard,
         {
-          backgroundColor: colors.cardBg,
+          backgroundColor: bgColor,
           borderRadius: radius.xl,
           borderWidth: 1,
-          borderColor: colors.cardBorder,
+          borderColor: borderColor,
           padding: spacing.md,
           ...shadows.sm,
         },
@@ -67,27 +76,30 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 
       <Image
         source={{ uri: event.image }}
         style={[styles.image, { borderRadius: radius.lg }]}
+        contentFit="cover"
+        placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+        transition={200}
       />
       <View style={[styles.listContent, { marginLeft: spacing.lg }]}>
-        <Text style={[typography.bodyBold, { color: colors.text }]} numberOfLines={1}>{event.title}</Text>
+        <Text style={[typography.bodyBold, { color: textColor }]} numberOfLines={1}>{event.title}</Text>
         <View style={[styles.row, { marginTop: spacing.xs }]}>
-          <Icon name="calendar-outline" size={14} color={colors.primary} />
-          <Text style={[typography.caption, { color: colors.textSecondary, marginLeft: 6, fontWeight: '500' }]}>
+          <Icon name="calendar-outline" size={14} color={iconColor} />
+          <Text style={[typography.caption, { color: textSecondaryColor, marginLeft: 6, fontWeight: '500' }]}>
             {event.date}
           </Text>
         </View>
         <View style={[styles.row, { marginTop: 4 }]}>
-          <Icon name="map-marker-outline" size={14} color={colors.primary} />
-          <Text style={[typography.caption, { color: colors.textSecondary, marginLeft: 6 }]} numberOfLines={1}>
+          <Icon name="map-marker-outline" size={14} color={iconColor} />
+          <Text style={[typography.caption, { color: textSecondaryColor, marginLeft: 6 }]} numberOfLines={1}>
             {event.location}
           </Text>
         </View>
         <View style={[styles.rowBetween, { marginTop: spacing.sm }]}>
-          <Text style={[typography.bodySmallBold, { color: colors.primary }]}>{event.price}</Text>
+          <Text style={[typography.bodySmallBold, { color: iconColor }]}>{event.price}</Text>
           {event.attendees !== undefined && (
-            <View style={[styles.attendeeBadge, { backgroundColor: colors.surfaceSecondary, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xxs }]}>
-              <Icon name="account-group-outline" size={12} color={colors.textSecondary} />
-              <Text style={[{ fontSize: 10, color: colors.textSecondary, marginLeft: 4 }]}>{event.attendees} Katılımcı</Text>
+            <View style={[styles.attendeeBadge, { backgroundColor: isDarkCard ? 'rgba(255,255,255,0.12)' : colors.surfaceSecondary, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xxs }]}>
+              <Icon name="account-group-outline" size={12} color={textSecondaryColor} />
+              <Text style={[{ fontSize: 10, color: textSecondaryColor, marginLeft: 4 }]}>{event.attendees} Katılımcı</Text>
             </View>
           )}
         </View>

@@ -2,6 +2,7 @@ import { NavigatorScreenParams } from '@react-navigation/native';
 
 export type AuthStackParamList = {
   Login: undefined;
+  SignUp: undefined;
   Onboarding: undefined;
 };
 
@@ -28,6 +29,7 @@ export type MainStackParamList = {
   AddProduct: undefined;
   ProductDetail: { id: string };
   Settings: undefined;
+  EditProfile: undefined;
 };
 
 export type DrawerParamList = {

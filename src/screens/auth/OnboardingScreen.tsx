@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, KeyboardAvoidingView } from 'react-native';
+import Constants from 'expo-constants';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
@@ -8,46 +9,205 @@ import { Input } from '../../components/ui/Input';
 import { Icon } from '../../components/ui/Icon';
 import { Toggle } from '../../components/ui/Toggle';
 import { Chip } from '../../components/ui/Chip';
-import { Avatar } from '../../components/ui/Avatar';
 import { AuthStackParamList } from '../../types/navigation';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Onboarding'>;
 
 const Step1Profile: React.FC<{ next: () => void }> = ({ next }) => {
   const { colors, spacing, radius, shadows } = useTheme();
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const scrollRef = React.useRef<ScrollView>(null);
+
+  const openGalleryAndSetAvatar = () => {
+    setTimeout(async () => {
+      let ImagePicker: typeof import('expo-image-picker') | null = null;
+      try {
+        ImagePicker = await import('expo-image-picker');
+      } catch {
+        Alert.alert(
+          'Galeri kullanılamıyor',
+          'Expo Go kullanıyorsanız: Ayarlar > Expo Go > İzinler bölümünden Fotoğraflar iznini açın. Hâlâ çalışmıyorsa bilgisayarda "npx expo run:ios" veya "npx expo run:android" çalıştırıp uygulamayı yeniden yükleyin.',
+          [{ text: 'Tamam' }]
+        );
+        return;
+      }
+      try {
+        if (!ImagePicker?.requestMediaLibraryPermissionsAsync) return;
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert(
+            'Galeri izni gerekli',
+            'Profil fotoğrafı için Ayarlar > Bu uygulama > İzinler (veya Fotoğraflar) bölümünden izin verin. Expo Go kullanıyorsanız "Expo Go" uygulamasının izinlerine bakın.',
+            [{ text: 'Tamam' }]
+          );
+          return;
+        }
+        if (!ImagePicker?.launchImageLibraryAsync) return;
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+        if (!result.canceled && result.assets?.[0]?.uri) {
+          setAvatarUri(result.assets[0].uri);
+        }
+      } catch (err: unknown) {
+        const message = String(err instanceof Error ? err.message : err);
+        if (/cancel|Cancel|User cancelled/i.test(message)) return;
+        const isNativeError =
+          /ExponentImagePicker|native module|runtime not ready|not found/i.test(message);
+        Alert.alert(
+          isNativeError ? 'Galeri bu ortamda çalışmıyor' : 'Hata',
+          isNativeError
+            ? 'Expo Go kullanıyorsanız: Ayarlar > Expo Go > İzinler > Fotoğraflar açın. Yoksa bilgisayarda "npx expo run:ios" veya "npx expo run:android" ile uygulamayı derleyip telefona yükleyin; izinler o build\'de görünür.'
+            : 'Fotoğraf seçilirken bir sorun oluştu. Lütfen tekrar deneyin.',
+          [{ text: 'Tamam' }]
+        );
+      }
+    }, 0);
+  };
 
   return (
-    <ScrollView contentContainerStyle={styles.stepContainer} showsVerticalScrollIndicator={false}>
-      <View style={styles.stepHeader}>
-        <Text style={[styles.stepTitle, { color: colors.text }]}>Profilini Oluştur</Text>
-        <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>Seni dans pistinde nasıl tanıyalım?</Text>
-      </View>
+    <KeyboardAvoidingView
+      style={styles.stepScroll}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      <ScrollView
+        ref={scrollRef}
+        style={styles.stepScroll}
+        contentContainerStyle={styles.stepContainerScroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.stepHeader}>
+          <Text style={[styles.stepTitle, { color: colors.text }]}>Profilini Oluştur</Text>
+          <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>Seni dans pistinde nasıl tanıyalım?</Text>
+        </View>
 
-      <View style={styles.avatarSection}>
-        <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surfaceSecondary, borderColor: colors.background, ...shadows.xl }]}>
-          <Icon name="account" size={64} color={colors.textTertiary} />
-          <View style={[styles.cameraButton, { backgroundColor: colors.primary }]}>
-            <Icon name="camera-plus" size={18} color="#FFFFFF" />
+        <View style={styles.avatarSection}>
+          <View style={styles.avatarWrapper}>
+            <TouchableOpacity
+              onPress={openGalleryAndSetAvatar}
+              activeOpacity={0.9}
+              style={[styles.avatarPlaceholder, { backgroundColor: colors.surfaceSecondary, borderColor: colors.background, ...shadows.xl }]}
+            >
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+              ) : (
+                <Icon name="account" size={64} color={colors.textTertiary} />
+              )}
+            </TouchableOpacity>
+            <View style={[styles.cameraButton, { backgroundColor: colors.primary, ...shadows.md }]}>
+              <Icon name="camera-plus" size={18} color="#FFFFFF" />
+            </View>
           </View>
         </View>
-      </View>
 
-      <View style={{ gap: spacing.lg }}>
-        <Input placeholder="Ad" />
-        <Input placeholder="Soyad" />
-        <Input placeholder="Kullanıcı Adı" autoCapitalize="none" />
+        <View style={{ gap: spacing.lg }}>
+          <Input placeholder="Ad" />
+          <Input placeholder="Soyad" />
+          <Input placeholder="Kullanıcı Adı" autoCapitalize="none" onFocus={() => scrollRef.current?.scrollToEnd({ animated: true })} />
+        </View>
+      </ScrollView>
+      <View style={styles.stepButtonContainer}>
+        <Button title="Devam Et" onPress={next} fullWidth iconRight="arrow-right" size="lg" />
       </View>
-
-      <View style={{ flex: 1 }} />
-      <Button title="Devam Et" onPress={next} fullWidth iconRight="arrow-right" size="lg" />
-    </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
+// Konum/bildirim native modülleri Expo Go'da yok; sadece kullanıcı açmak istediğinde dene, açılışta hiç yükleme
+const isStandalone = Constants.appOwnership === 'standalone';
+
 const Step2Permissions: React.FC<{ next: () => void }> = ({ next }) => {
   const { colors, spacing, radius } = useTheme();
-  const [locationEnabled, setLocationEnabled] = useState(true);
+  const [locationEnabled, setLocationEnabled] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+
+  // İzin durumunu sadece standalone build'de ve kullanıcı sayfadayken (toggle'a basınca) yüklüyoruz.
+  // Açılışta import yok → Expo Go'da "Cannot find native module" hatası oluşmaz.
+  const requestLocationPermission = async (enable: boolean) => {
+    if (!enable) {
+      setLocationEnabled(false);
+      return;
+    }
+    if (!isStandalone) {
+      Alert.alert(
+        'Expo Go\'da kullanılamaz',
+        'Konum izni Expo Go içinde desteklenmiyor. Gerçek izin penceresini kullanmak için: bilgisayarda "npx expo run:ios" veya "npx expo run:android" çalıştırıp uygulamayı cihaza yükleyin.',
+        [{ text: 'Tamam' }]
+      );
+      return;
+    }
+    setLocationLoading(true);
+    try {
+      const Location = await import('expo-location');
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      setLocationEnabled(status === 'granted');
+      if (status === 'granted') {
+        // İzin verildiği anda konumu gerçekten kullan (mağaza incelemesi için)
+        try {
+          await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        } catch {
+          // Konum alınamazsa bile izin kullanılmış sayılır
+        }
+      } else {
+        Alert.alert(
+          'Konum izni',
+          'Çevrenizdeki etkinlikleri gösterebilmek için konum erişimine izin vermeniz gerekir. İsterseniz ayarlardan sonra açabilirsiniz.',
+          [{ text: 'Tamam' }]
+        );
+      }
+    } catch {
+      setLocationEnabled(false);
+      Alert.alert('Hata', 'Konum izni alınamadı.', [{ text: 'Tamam' }]);
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const requestNotificationPermission = async (enable: boolean) => {
+    if (!enable) {
+      setNotificationsEnabled(false);
+      return;
+    }
+    if (!isStandalone) {
+      Alert.alert(
+        'Expo Go\'da kullanılamaz',
+        'Bildirim izni Expo Go içinde desteklenmiyor. Gerçek izin penceresini kullanmak için: bilgisayarda "npx expo run:ios" veya "npx expo run:android" çalıştırıp uygulamayı cihaza yükleyin.',
+        [{ text: 'Tamam' }]
+      );
+      return;
+    }
+    setNotificationsLoading(true);
+    try {
+      const Notifications = await import('expo-notifications');
+      const { status: existing } = await Notifications.getPermissionsAsync();
+      const finalStatus =
+        existing === 'granted' ? existing : (await Notifications.requestPermissionsAsync()).status;
+      setNotificationsEnabled(finalStatus === 'granted');
+      if (finalStatus === 'granted') {
+        // İzin verildiği anda bildirimi kullan: hoş geldin bildirimi (mağaza incelemesi için)
+        const { scheduleWelcomeNotification } = await import('../../services/notifications');
+        scheduleWelcomeNotification().catch(() => {});
+      } else {
+        Alert.alert(
+          'Bildirim izni',
+          'Davet ve duyurulardan haberdar olmak için bildirimlere izin vermeniz gerekir. İsterseniz ayarlardan sonra açabilirsiniz.',
+          [{ text: 'Tamam' }]
+        );
+      }
+    } catch {
+      setNotificationsEnabled(false);
+      Alert.alert('Hata', 'Bildirim izni alınamadı.', [{ text: 'Tamam' }]);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
 
   return (
     <View style={styles.stepContainer}>
@@ -72,7 +232,11 @@ const Step2Permissions: React.FC<{ next: () => void }> = ({ next }) => {
             <Text style={[{ fontWeight: '700', fontSize: 14, color: colors.text }]}>Konum</Text>
             <Text style={[{ fontSize: 12, color: colors.textSecondary }]}>Çevrendeki etkinlikler</Text>
           </View>
-          <Toggle value={locationEnabled} onValueChange={setLocationEnabled} />
+          <Toggle
+            value={locationEnabled}
+            onValueChange={requestLocationPermission}
+            disabled={locationLoading}
+          />
         </View>
 
         <View style={[styles.permRow, { backgroundColor: colors.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.lg }]}>
@@ -83,7 +247,11 @@ const Step2Permissions: React.FC<{ next: () => void }> = ({ next }) => {
             <Text style={[{ fontWeight: '700', fontSize: 14, color: colors.text }]}>Bildirimler</Text>
             <Text style={[{ fontSize: 12, color: colors.textSecondary }]}>Davetler ve duyurular</Text>
           </View>
-          <Toggle value={notificationsEnabled} onValueChange={setNotificationsEnabled} />
+          <Toggle
+            value={notificationsEnabled}
+            onValueChange={requestNotificationPermission}
+            disabled={notificationsLoading}
+          />
         </View>
       </View>
 
@@ -210,8 +378,20 @@ const styles = StyleSheet.create({
   stepWrapper: {
     flex: 1,
   },
+  stepScroll: {
+    flex: 1,
+  },
   stepContainer: {
     flex: 1,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  stepContainerScroll: {
+    flexGrow: 1,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  stepButtonContainer: {
     paddingTop: 16,
     paddingBottom: 24,
   },
@@ -232,6 +412,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 32,
   },
+  avatarWrapper: {
+    position: 'relative',
+    width: 128,
+    height: 128,
+  },
   avatarPlaceholder: {
     width: 128,
     height: 128,
@@ -239,11 +424,17 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   cameraButton: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
+    bottom: -4,
+    right: -4,
     width: 40,
     height: 40,
     borderRadius: 20,

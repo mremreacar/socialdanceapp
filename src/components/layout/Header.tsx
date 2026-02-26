@@ -38,8 +38,6 @@ export const Header: React.FC<HeaderProps> = ({
           backgroundColor: transparent ? 'transparent' : colors.headerBg,
           paddingHorizontal: spacing.lg,
           paddingVertical: spacing.md,
-          borderBottomWidth: transparent ? 0 : 1,
-          borderBottomColor: colors.borderLight,
         },
         style,
       ]}
@@ -79,7 +77,7 @@ export const Header: React.FC<HeaderProps> = ({
         )}
       </View>
 
-      <Text style={[typography.h4, { color: colors.text }]} numberOfLines={1}>
+      <Text style={[typography.h4, { color: colors.headerText ?? colors.text }]} numberOfLines={1}>
         {title}
       </Text>
 

@@ -1,5 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+export interface StoredProfile {
+  displayName: string;
+  username: string;
+  avatarUri: string | null;
+  bio: string;
+}
+
+const DEFAULT_PROFILE: StoredProfile = {
+  displayName: 'Elif Yılmaz',
+  username: 'elifyilmaz',
+  avatarUri: null,
+  bio: 'Salsa ve Bachata tutkunu. Yeni insanlarla tanışıp dans etmeyi seviyorum!',
+};
+
 const KEYS = {
   USER_LOGGED_IN: '@socialdance/logged_in',
   USER_FAVORITES: '@socialdance/favorites',
@@ -7,6 +21,7 @@ const KEYS = {
   LOCATION_ENABLED: '@socialdance/location_enabled',
   DANCED_COUNT: '@socialdance/danced_count',
   THEME_MODE: '@socialdance/theme_mode',
+  PROFILE: '@socialdance/profile',
 } as const;
 
 export const storage = {
@@ -56,5 +71,14 @@ export const storage = {
 
   async setDancedCount(count: number): Promise<void> {
     await this.setItem(KEYS.DANCED_COUNT, count);
+  },
+
+  async getProfile(): Promise<StoredProfile> {
+    const v = await this.getItem<StoredProfile>(KEYS.PROFILE);
+    return v ?? DEFAULT_PROFILE;
+  },
+
+  async setProfile(profile: StoredProfile): Promise<void> {
+    await this.setItem(KEYS.PROFILE, profile);
   },
 };

@@ -89,7 +89,7 @@ export const MainTabs: React.FC = () => {
 const styles = StyleSheet.create({
   centerTabContainer: {
     position: 'relative',
-    top: -12,
+    top: -22,
   },
   centerTab: {
     width: 56,

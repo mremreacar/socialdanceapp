@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Share } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
@@ -10,6 +10,7 @@ import { Avatar } from '../../components/ui/Avatar';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { mockEvents } from '../../constants/mockData';
 import { MainStackParamList } from '../../types/navigation';
+import { scheduleEventReminder } from '../../services/notifications';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'EventDetails'>;
 
@@ -17,50 +18,118 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const { colors, spacing, radius, typography } = useTheme();
   const event = mockEvents.find((e) => e.id === route.params.id) || mockEvents[0];
   const [isFavorite, setIsFavorite] = useState(false);
+  const [reminderScheduled, setReminderScheduled] = useState(false);
   const capacity = 50;
   const attending = event.attendees || 12;
 
+  const handleJoin = async () => {
+    if (event.rawDate && !reminderScheduled) {
+      const id = await scheduleEventReminder(event.title, event.rawDate);
+      if (id) setReminderScheduled(true);
+    }
+  };
+
+  const handleShare = () => {
+    Share.share({
+      message: `${event.title}\n${event.date}\n${event.location}\n${event.price ?? ''}`,
+      title: event.title,
+    }).catch(() => {});
+  };
+
   return (
     <Screen>
-      <Header title="" showBack />
-      <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+      <Header
+        title={event.title}
+        showBack
+        rightIcon="share-variant"
+        onRightPress={handleShare}
+      />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.lg }}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.heroWrap}>
           <Image source={{ uri: event.image }} style={styles.heroImage} />
           <View style={[styles.heroGradient, { backgroundColor: 'transparent' }]} />
           <TouchableOpacity
             style={[styles.favBtn, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
-            onPress={() => setIsFavorite(!isFavorite)}
+            onPress={async () => {
+              const next = !isFavorite;
+              setIsFavorite(next);
+              if (next && event.rawDate) await scheduleEventReminder(event.title, event.rawDate);
+            }}
           >
-            <Icon name={isFavorite ? 'heart' : 'heart-outline'} size={24} color="#FFFFFF" />
+            <Icon name={isFavorite ? 'heart' : 'heart-outline'} size={24} color={isFavorite ? '#EE2AEE' : '#FFFFFF'} />
           </TouchableOpacity>
         </View>
 
-        <View style={{ paddingHorizontal: spacing.lg, marginTop: -spacing.xxl }}>
-          <View style={[styles.card, { backgroundColor: colors.surface, borderRadius: radius.xxl, padding: spacing.xl }]}>
-            <Text style={[typography.h3, { color: colors.text }]}>{event.title}</Text>
+        <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.xl }}>
+            <Text style={[typography.h3, { color: '#FFFFFF' }]}>{event.title}</Text>
             <View style={[styles.row, { marginTop: spacing.sm }]}>
-              <Icon name="calendar-outline" size={18} color={colors.primary} />
-              <Text style={[typography.bodySmall, { color: colors.textSecondary, marginLeft: 8 }]}>{event.date}</Text>
-            </View>
-            <View style={[styles.row, { marginTop: 4 }]}>
-              <Icon name="map-marker-outline" size={18} color={colors.primary} />
-              <Text style={[typography.bodySmall, { color: colors.textSecondary, marginLeft: 8 }]}>{event.location}</Text>
-            </View>
-            <View style={{ marginTop: spacing.lg }}>
-              <View style={styles.rowBetween}>
-                <Text style={[typography.caption, { color: colors.textSecondary }]}>Kapasite</Text>
-                <Text style={[typography.bodySmallBold, { color: colors.text }]}>{attending} / {capacity}</Text>
+              <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
+                <Icon name="calendar-outline" size={18} color={colors.primary} />
               </View>
-              <ProgressBar progress={attending / capacity} height={8} style={{ marginTop: 4 }} />
+              <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.85)', marginLeft: spacing.sm }]}>{event.date}</Text>
             </View>
-          </View>
+            <View style={[styles.row, { marginTop: spacing.xs }]}>
+              <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
+                <Icon name="map-marker-outline" size={18} color={colors.primary} />
+              </View>
+              <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.85)', marginLeft: spacing.sm }]}>{event.location}</Text>
+            </View>
+            {event.danceType != null && (
+              <View style={[styles.row, { marginTop: spacing.sm }]}>
+                <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
+                  <Icon name="music" size={18} color={colors.primary} />
+                </View>
+                <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.7)', marginLeft: spacing.sm }]}>Dans Türü: </Text>
+                <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.85)' }]}>{event.danceType}</Text>
+              </View>
+            )}
+            {event.price != null && (
+              <View style={[styles.row, { marginTop: spacing.sm }]}>
+                <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
+                  <Icon name="tag-outline" size={18} color={colors.primary} />
+                </View>
+                <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.7)', marginLeft: spacing.sm }]}>Ücret: </Text>
+                <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.85)' }]}>{event.price}</Text>
+              </View>
+            )}
+            <View style={{ marginTop: spacing.sm }}>
+              <View style={[styles.row, { alignItems: 'center' }]}>
+                <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
+                  <Icon name="account-group-outline" size={18} color={colors.primary} />
+                </View>
+                <View style={{ marginLeft: spacing.sm, flex: 1 }}>
+                  <View style={styles.rowBetween}>
+                    <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.7)' }]}>Kapasite</Text>
+                    <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{attending} / {capacity}</Text>
+                  </View>
+                  <ProgressBar progress={attending / capacity} height={4} style={{ marginTop: 6, width: '100%' }} />
+                </View>
+              </View>
+            </View>
 
-          <View style={[styles.friendsRow, { marginTop: spacing.xl }]}>
-            <Text style={[typography.bodySmallBold, { color: colors.text }]}>Katılan arkadaşlar</Text>
-            <View style={styles.avatars}>
-              {[1, 2, 3].map((i) => (
-                <Avatar key={i} source={`https://i.pravatar.cc/150?u=${i}`} size="sm" style={{ marginLeft: -8 }} />
-              ))}
+          <View
+            style={[
+              styles.friendsBorder,
+              {
+                marginTop: spacing.xl,
+                backgroundColor: '#241C27',
+                borderColor: 'rgba(255,255,255,0.2)',
+                borderRadius: 50,
+                padding: spacing.lg,
+              },
+            ]}
+          >
+            <View style={styles.friendsRow}>
+              <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Katılan arkadaşlar</Text>
+              <View style={styles.avatars}>
+                {[1, 2, 3].map((i) => (
+                  <Avatar key={i} source={`https://i.pravatar.cc/150?u=${i}`} size="sm" style={{ marginLeft: -8 }} />
+                ))}
+              </View>
             </View>
           </View>
 
@@ -70,13 +139,20 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             style={[styles.dqBanner, { backgroundColor: colors.purpleAlpha, borderRadius: radius.xl, padding: spacing.lg, marginTop: spacing.lg }]}
           >
             <Icon name="crown" size={24} color={colors.purple} />
-            <Text style={[typography.bodySmallBold, { color: colors.text, marginLeft: spacing.md }]}>DanceQueen oylamasına katıl</Text>
+            <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: spacing.md }]}>DanceQueen oylamasına katıl</Text>
             <Icon name="chevron-right" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
 
-          <View style={[styles.bottomBar, { backgroundColor: colors.headerBg, borderTopColor: colors.borderLight, paddingHorizontal: spacing.lg, paddingVertical: spacing.lg }]}>
-            <Text style={[typography.h4, { color: colors.primary }]}>{event.price}</Text>
-            <Button title="Katıl" onPress={() => {}} style={{ flex: 1, marginLeft: spacing.lg }} />
+          <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginTop: spacing.xl }} />
+          <View style={{ marginTop: spacing.lg }}>
+            <Text style={[typography.h4, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Etkinlik açıklaması</Text>
+            <Text style={[typography.body, { color: 'rgba(255,255,255,0.85)', lineHeight: 22 }]}>
+              {event.description ?? `${event.title} ile unutulmaz bir dans gecesi sizi bekliyor. Canlı müzik ve harika bir atmosferde ${event.danceType ?? 'Latin'} ritimlerine kendinizi bırakın.`}
+            </Text>
+          </View>
+          <View style={{ flex: 1, minHeight: 24 }} />
+          <View style={[styles.bottomBar, { backgroundColor: colors.headerBg, paddingHorizontal: spacing.lg, paddingVertical: spacing.lg }]}>
+            <Button title="Katıl" onPress={handleJoin} fullWidth style={{ borderRadius: 50 }} />
           </View>
         </View>
       </ScrollView>
@@ -89,11 +165,18 @@ const styles = StyleSheet.create({
   heroImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   heroGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 80 },
   favBtn: { position: 'absolute', top: 16, right: 16, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  card: { borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   row: { flexDirection: 'row', alignItems: 'center' },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  iconBox: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  friendsBorder: { borderWidth: 1 },
   friendsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   avatars: { flexDirection: 'row', alignItems: 'center' },
   dqBanner: { flexDirection: 'row', alignItems: 'center' },
-  bottomBar: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1 },
+  bottomBar: { flexDirection: 'row', alignItems: 'center' },
 });

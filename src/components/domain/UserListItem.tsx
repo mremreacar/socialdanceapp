@@ -15,6 +15,14 @@ interface UserListItemProps {
   showOnline?: boolean;
   unreadCount?: number;
   timestamp?: string;
+  /** İsim rengi (varsayılan: theme text) */
+  nameColor?: string;
+  /** Alt yazı rengi (varsayılan: theme textSecondary) */
+  subtitleColor?: string;
+  /** Sağ buton border rengi (outline variant için) */
+  rightButtonBorderColor?: string;
+  /** Sağ buton yazı rengi (outline variant için) */
+  rightButtonTextColor?: string;
 }
 
 export const UserListItem: React.FC<UserListItemProps> = ({
@@ -28,8 +36,16 @@ export const UserListItem: React.FC<UserListItemProps> = ({
   showOnline = false,
   unreadCount,
   timestamp,
+  nameColor,
+  subtitleColor,
+  rightButtonBorderColor,
+  rightButtonTextColor,
 }) => {
   const { colors, spacing, radius, typography } = useTheme();
+  const finalNameColor = nameColor ?? colors.text;
+  const finalSubtitleColor = subtitleColor ?? colors.textSecondary;
+  const outlineBorderColor = rightButtonBorderColor ?? colors.border;
+  const outlineTextColor = rightButtonTextColor ?? colors.text;
 
   return (
     <TouchableOpacity
@@ -41,13 +57,13 @@ export const UserListItem: React.FC<UserListItemProps> = ({
       <Avatar source={avatar} size="md" showOnline={showOnline} />
       <View style={[styles.content, { marginLeft: spacing.md }]}>
         <View style={styles.nameRow}>
-          <Text style={[typography.bodySmallBold, { color: colors.text, flex: 1 }]} numberOfLines={1}>{name}</Text>
+          <Text style={[typography.bodySmallBold, { color: finalNameColor, flex: 1 }]} numberOfLines={1}>{name}</Text>
           {timestamp && (
             <Text style={[typography.caption, { color: colors.textTertiary }]}>{timestamp}</Text>
           )}
         </View>
         {subtitle && (
-          <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 2 }]} numberOfLines={1}>
+          <Text style={[typography.caption, { color: finalSubtitleColor, marginTop: 2 }]} numberOfLines={1}>
             {subtitle}
           </Text>
         )}
@@ -60,7 +76,7 @@ export const UserListItem: React.FC<UserListItemProps> = ({
             {
               backgroundColor: rightVariant === 'primary' ? colors.primary : 'transparent',
               borderWidth: rightVariant === 'outline' ? 1 : 0,
-              borderColor: colors.border,
+              borderColor: rightVariant === 'outline' ? outlineBorderColor : colors.border,
               borderRadius: radius.full,
               paddingHorizontal: spacing.lg,
               paddingVertical: spacing.sm,
@@ -71,7 +87,7 @@ export const UserListItem: React.FC<UserListItemProps> = ({
           <Text
             style={[
               typography.captionBold,
-              { color: rightVariant === 'primary' ? colors.textInverse : colors.text },
+              { color: rightVariant === 'primary' ? colors.textInverse : outlineTextColor },
             ]}
           >
             {rightLabel}

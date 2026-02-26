@@ -7,11 +7,18 @@ export interface Event {
   image: string;
   price?: string;
   attendees?: number;
+  /** Dans türü (örn. Salsa, Bachata) */
+  danceType?: string;
+  /** Etkinlik açıklaması */
+  description?: string;
   type?: string;
   rating?: number;
   ratingCount?: number;
   rawDate?: Date;
   mapCoordinates?: { top: string; left: string };
+  /** Enlem/boylam mesafe hesaplama ve sıralama için (konum izni kullanımı) */
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface School {
@@ -24,6 +31,7 @@ export interface School {
   ratingCount: number;
   isOpen?: boolean;
   tags?: string[];
+  phone?: string;
 }
 
 export interface User {

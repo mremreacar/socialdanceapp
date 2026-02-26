@@ -12,10 +12,34 @@ interface TabSwitchProps {
   tabs: Tab[];
   activeTab: string;
   onTabChange: (key: string) => void;
+  /** Container border radius (varsayılan: theme radius.lg) */
+  containerRadius?: number;
+  /** Arka plan rengi */
+  containerBgColor?: string;
+  /** Seçili sekme göstergesi (kayan pill) rengi */
+  indicatorColor?: string;
+  /** Sekme yazı rengi (seçili değilken) */
+  textColor?: string;
+  /** Seçili sekme yazı rengi */
+  activeTextColor?: string;
 }
 
-export const TabSwitch: React.FC<TabSwitchProps> = ({ tabs, activeTab, onTabChange }) => {
+export const TabSwitch: React.FC<TabSwitchProps> = ({
+  tabs,
+  activeTab,
+  onTabChange,
+  containerRadius,
+  containerBgColor,
+  indicatorColor,
+  textColor,
+  activeTextColor,
+}) => {
   const { colors, spacing, radius, typography } = useTheme();
+  const containerRadiusValue = containerRadius ?? radius.lg;
+  const bgColor = containerBgColor ?? colors.surfaceSecondary;
+  const indColor = indicatorColor ?? colors.surface;
+  const inactiveColor = textColor ?? colors.textSecondary;
+  const activeColor = activeTextColor ?? colors.text;
   const translateX = useRef(new Animated.Value(0)).current;
   const containerWidth = useRef(0);
 
@@ -45,8 +69,8 @@ export const TabSwitch: React.FC<TabSwitchProps> = ({ tabs, activeTab, onTabChan
       style={[
         styles.container,
         {
-          backgroundColor: colors.surfaceSecondary,
-          borderRadius: radius.lg,
+          backgroundColor: bgColor,
+          borderRadius: containerRadiusValue,
           padding: 2,
         },
       ]}
@@ -56,8 +80,8 @@ export const TabSwitch: React.FC<TabSwitchProps> = ({ tabs, activeTab, onTabChan
           styles.indicator,
           {
             width: tabWidth - 4,
-            backgroundColor: colors.surface,
-            borderRadius: radius.md,
+            backgroundColor: indColor,
+            borderRadius: containerRadiusValue - 2,
             transform: [{ translateX }],
           },
         ]}
@@ -74,7 +98,7 @@ export const TabSwitch: React.FC<TabSwitchProps> = ({ tabs, activeTab, onTabChan
               typography.bodySmall,
               {
                 fontWeight: activeTab === tab.key ? '700' : '500',
-                color: activeTab === tab.key ? colors.text : colors.textSecondary,
+                color: activeTab === tab.key ? activeColor : inactiveColor,
                 textAlign: 'center',
               },
             ]}

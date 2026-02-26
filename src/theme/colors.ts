@@ -52,7 +52,7 @@ export const palette = {
 export type ThemeColors = Record<keyof typeof lightTheme, string>;
 
 export const lightTheme = {
-  background: '#f8f8fa',
+  background: '#231022',
   surface: palette.white,
   surfaceSecondary: palette.zinc100,
 
@@ -107,10 +107,12 @@ export const lightTheme = {
 
   skeleton: palette.zinc200,
 
-  tabBarBg: palette.white,
-  tabBarBorder: palette.zinc200,
+  tabBarBg: '#231022',
+  tabBarBorder: 'rgba(255,255,255,0.08)',
   tabBarInactive: palette.zinc400,
   tabBarActive: palette.primary,
+
+  headerText: '#FFFFFF',
 
   inputBg: palette.zinc50,
   inputBorder: palette.zinc200,
@@ -119,11 +121,12 @@ export const lightTheme = {
   cardBg: palette.white,
   cardBorder: palette.zinc100,
 
-  headerBg: 'rgba(248, 248, 250, 0.95)',
+  headerBg: '#231022',
+  headerText: '#FFFFFF',
 };
 
 export const darkTheme: ThemeColors = {
-  background: '#121212',
+  background: '#231022',
   surface: '#1e1e1e',
   surfaceSecondary: palette.zinc800,
 
@@ -178,10 +181,12 @@ export const darkTheme: ThemeColors = {
 
   skeleton: palette.zinc700,
 
-  tabBarBg: '#1e1e1e',
-  tabBarBorder: 'rgba(255,255,255,0.05)',
+  tabBarBg: '#231022',
+  tabBarBorder: 'rgba(255,255,255,0.08)',
   tabBarInactive: palette.zinc500,
   tabBarActive: palette.primary,
+
+  headerText: '#FFFFFF',
 
   inputBg: palette.zinc800,
   inputBorder: 'rgba(255,255,255,0.08)',
@@ -190,5 +195,5 @@ export const darkTheme: ThemeColors = {
   cardBg: '#1e1e1e',
   cardBorder: 'rgba(255,255,255,0.05)',
 
-  headerBg: 'rgba(18, 18, 18, 0.95)',
+  headerBg: '#231022',
 };

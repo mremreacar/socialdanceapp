@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
@@ -8,14 +9,15 @@ import { TabSwitch } from '../../components/domain/TabSwitch';
 import { Card } from '../../components/ui/Card';
 import { Icon } from '../../components/ui/Icon';
 import { MainStackParamList } from '../../types/navigation';
+import { mockSchools } from '../../constants/mockData';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'SchoolDetails'>;
 
-const mockSchool = {
+const defaultSchool = {
   id: '1',
   name: 'Salsa Academy Istanbul',
   location: 'Kadıköy, İstanbul',
-  image: 'https://images.unsplash.com/photo-1547153760-18fc949bc86e?w=400',
+  image: 'https://picsum.photos/seed/salsa1/400/280',
   rating: 4.8,
   ratingCount: 124,
   classes: [
@@ -30,6 +32,18 @@ const mockSchool = {
 export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const { colors, spacing, radius, typography } = useTheme();
   const [activeTab, setActiveTab] = useState('schedule');
+  const schoolFromList = mockSchools.find((s) => s.id === route.params.id);
+  const mockSchool = {
+    ...defaultSchool,
+    ...schoolFromList,
+    name: schoolFromList?.name ?? defaultSchool.name,
+    location: schoolFromList?.location ?? defaultSchool.location,
+    image: schoolFromList?.image ?? defaultSchool.image,
+    rating: schoolFromList?.rating ?? defaultSchool.rating,
+    ratingCount: schoolFromList?.ratingCount ?? defaultSchool.ratingCount,
+    classes: defaultSchool.classes,
+    events: defaultSchool.events,
+  };
 
   const tabs = [
     { key: 'schedule', label: 'Ders Programı' },
@@ -38,17 +52,20 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
 
   return (
     <Screen>
-      <Header title="" showBack />
+      <Header title={mockSchool.name} showBack />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
         <View style={styles.avatarWrap}>
-          <Image source={{ uri: mockSchool.image }} style={[styles.schoolImage, { borderRadius: radius.xxl }]} />
+          <Image
+            source={{ uri: mockSchool.image }}
+            style={[styles.schoolImage, { borderRadius: radius.xxl }]}
+            contentFit="cover"
+            placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+            transition={200}
+          />
         </View>
 
-        <Text style={[typography.h3, { color: colors.text, textAlign: 'center', marginTop: spacing.md }]}>
-          {mockSchool.name}
-        </Text>
-        <View style={styles.row}>
+        <View style={[styles.row, { marginTop: spacing.md, justifyContent: 'center' }]}>
           <Icon name="map-marker-outline" size={16} color={colors.textSecondary} />
           <Text style={[typography.bodySmall, { color: colors.textSecondary, marginLeft: 6 }]}>
             {mockSchool.location} • ⭐ {mockSchool.rating} ({mockSchool.ratingCount})

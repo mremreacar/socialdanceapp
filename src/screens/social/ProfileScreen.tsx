@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../theme';
+import { useProfile } from '../../context/ProfileContext';
 import { Screen } from '../../components/layout/Screen';
-import { Header } from '../../components/layout/Header';
+import { CollapsingHeaderScrollView } from '../../components/layout/CollapsingHeaderScrollView';
 import { Avatar } from '../../components/ui/Avatar';
 import { TabSwitch } from '../../components/domain/TabSwitch';
 import { UserListItem } from '../../components/domain/UserListItem';
+import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { mockFollowing } from '../../constants/mockData';
 
 const followersList = [
@@ -18,10 +20,32 @@ const requestsList = [{ id: 7, name: 'Gizem Ak', handle: '@gizemak', img: 'https
 export const ProfileScreen: React.FC = () => {
   const navigation = useNavigation();
   const { colors, spacing, typography } = useTheme();
+  const { profile, avatarSource } = useProfile();
   const [activeTab, setActiveTab] = useState<'following' | 'followers' | 'requests'>('following');
   const [dancedCount] = useState(42);
+  const [unfollowedIds, setUnfollowedIds] = useState<Set<number>>(new Set());
+  const [confirmModal, setConfirmModal] = useState<{ userId: number; userName: string } | null>(null);
 
   const openDrawer = () => (navigation.getParent() as any)?.openDrawer?.();
+
+  const handleUnfollowPress = (userId: number, userName: string) => {
+    setConfirmModal({ userId, userName });
+  };
+
+  const handleConfirmUnfollow = () => {
+    if (confirmModal) {
+      setUnfollowedIds((prev) => new Set(prev).add(confirmModal.userId));
+      setConfirmModal(null);
+    }
+  };
+
+  const handleFollowPress = (userId: number) => {
+    setUnfollowedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(userId);
+      return next;
+    });
+  };
 
   const getList = () => {
     if (activeTab === 'following') return mockFollowing;
@@ -31,36 +55,63 @@ export const ProfileScreen: React.FC = () => {
 
   return (
     <Screen>
-      <Header title="Profil" showBack={false} showMenu onMenuPress={openDrawer} rightIcon="cog" onRightPress={() => (navigation.getParent() as any)?.navigate('Settings')} />
-
-      <ScrollView contentContainerStyle={{ alignItems: 'center', paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+      <ConfirmModal
+        visible={!!confirmModal}
+        title="Emin misiniz?"
+        message={
+          confirmModal
+            ? `${confirmModal.userName} kullanıcısını takipten çıkarmak istediğinize emin misiniz?`
+            : ''
+        }
+        cancelLabel="İptal"
+        confirmLabel="Eminim"
+        onCancel={() => setConfirmModal(null)}
+        onConfirm={handleConfirmUnfollow}
+      />
+      <CollapsingHeaderScrollView
+        headerProps={{
+          title: 'Profil',
+          showBack: false,
+          showMenu: true,
+          onMenuPress: openDrawer,
+          rightIcon: 'cog',
+          onRightPress: () => (navigation.getParent() as any)?.navigate('Settings'),
+        }}
+        contentContainerStyle={{ alignItems: 'center', paddingBottom: 100 }}
+      >
         <View style={[styles.avatarRing, { borderColor: colors.primary }]}>
           <Avatar
-            source="https://lh3.googleusercontent.com/aida-public/AB6AXuAozkav3nW4pjxxBTZ9r4bnylgPIqCTaCZfeooT-iWfynJKZXgRv-HsTDa3vAtFwVs-S0q_5DxzyefpzHzF9dxop2EIWngyydzbp00sS9RD_GW7EAYzlT5uL0xw7zjOZu4BhH4QjAGHvnjHbl6blJTPQPYsnNb08fT2JwDrOlRZhBHfCqRwlN3GOJq-wj48GfdD3ZyLxdmrkroY0i1ic51l_ssDbmO_cM2bldocE_cHmHuSYfM4JE3Up_oWcyj3HNikmvQ4rUzFrWE"
+            source={avatarSource}
             size="xl"
             showBorder
           />
         </View>
-        <Text style={[typography.h3, { color: colors.text, marginTop: spacing.md }]}>Elif Yılmaz</Text>
-        <Text style={[typography.bodySmall, { color: colors.textSecondary }]}>@elifyilmaz</Text>
-        <Text style={[typography.bodySmall, { color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.xxl }]}>
-          Salsa ve Bachata tutkunu. Yeni insanlarla tanışıp dans etmeyi seviyorum!
+        <Text style={[typography.h3, { color: '#FFFFFF', marginTop: spacing.md }]}>{profile.displayName}</Text>
+        <Text style={[typography.bodySmall, { color: '#FFFFFF' }]}>@{profile.username}</Text>
+        <Text style={[typography.bodySmall, { color: '#919FB4', textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.xxl }]}>
+          {profile.bio}
         </Text>
 
-        <View style={[styles.statsRow, { backgroundColor: colors.surface, borderRadius: 16, padding: spacing.lg, marginTop: spacing.xl, borderWidth: 1, borderColor: colors.cardBorder }]}>
+        <TouchableOpacity
+          onPress={() => (navigation.getParent() as any)?.navigate('EditProfile')}
+          activeOpacity={0.8}
+          style={[styles.editProfileBtn, { backgroundColor: '#4B154B', borderRadius: 50, marginTop: spacing.xl }]}
+        >
+          <Text style={[typography.bodySmallBold, { color: '#F22DF3' }]}>Profili düzenle</Text>
+        </TouchableOpacity>
+
+        <View style={[styles.statsRow, { backgroundColor: '#2C1C2D', borderRadius: 50, padding: spacing.lg, marginTop: spacing.md }]}>
           <TouchableOpacity style={styles.statItem} onPress={() => setActiveTab('following')}>
-            <Text style={[typography.bodyBold, { color: colors.text }]}>{mockFollowing.length}</Text>
-            <Text style={[typography.label, { color: colors.textSecondary }]}>Takip Edilen</Text>
+            <Text style={[typography.bodyBold, { color: '#FFFFFF' }]}>{mockFollowing.length - unfollowedIds.size}</Text>
+            <Text style={[typography.label, { color: '#919FB4' }]}>Takip Edilen</Text>
           </TouchableOpacity>
-          <View style={[styles.statDivider, { backgroundColor: colors.borderLight }]} />
           <TouchableOpacity style={styles.statItem} onPress={() => setActiveTab('followers')}>
-            <Text style={[typography.bodyBold, { color: colors.text }]}>{followersList.length}</Text>
-            <Text style={[typography.label, { color: colors.textSecondary }]}>Takipçi</Text>
+            <Text style={[typography.bodyBold, { color: '#FFFFFF' }]}>{followersList.length}</Text>
+            <Text style={[typography.label, { color: '#919FB4' }]}>Takipçi</Text>
           </TouchableOpacity>
-          <View style={[styles.statDivider, { backgroundColor: colors.borderLight }]} />
           <View style={styles.statItem}>
-            <Text style={[typography.bodyBold, { color: colors.primary }]}>{dancedCount}</Text>
-            <Text style={[typography.label, { color: colors.textSecondary }]}>Dans Edilen</Text>
+            <Text style={[typography.bodyBold, { color: '#FFFFFF' }]}>{dancedCount}</Text>
+            <Text style={[typography.label, { color: '#919FB4' }]}>Dans Edilen</Text>
           </View>
         </View>
 
@@ -73,20 +124,40 @@ export const ProfileScreen: React.FC = () => {
             ]}
             activeTab={activeTab}
             onTabChange={(k) => setActiveTab(k as any)}
+            containerRadius={50}
+            containerBgColor="#1E283A"
+            indicatorColor="#020617"
+            textColor="#FFFFFF"
+            activeTextColor="#EE2AEE"
           />
           <View style={{ marginTop: spacing.lg }}>
             {getList().length > 0 ? (
-              getList().map((user: any) => (
-                <UserListItem
-                  key={user.id}
-                  name={user.name}
-                  subtitle={user.handle}
-                  avatar={user.img}
-                  rightLabel={activeTab === 'requests' ? 'Onayla' : 'Takipten Çık'}
-                  rightVariant={activeTab === 'requests' ? 'primary' : 'outline'}
-                  onRightPress={() => {}}
-                />
-              ))
+              getList().map((user: any) => {
+                const isUnfollowed = activeTab === 'following' && unfollowedIds.has(user.id);
+                const rightLabel =
+                  activeTab === 'requests' ? 'Onayla' : isUnfollowed ? 'Takip Et' : 'Takipten Çık';
+                const onRightPress =
+                  activeTab === 'requests'
+                    ? () => {}
+                    : isUnfollowed
+                      ? () => handleFollowPress(user.id)
+                      : () => handleUnfollowPress(user.id, user.name);
+                return (
+                  <UserListItem
+                    key={user.id}
+                    name={user.name}
+                    subtitle={user.handle}
+                    avatar={user.img}
+                    rightLabel={rightLabel}
+                    rightVariant={activeTab === 'requests' ? 'primary' : 'outline'}
+                    onRightPress={onRightPress}
+                    nameColor="#FFFFFF"
+                    subtitleColor="#919FB4"
+                    rightButtonBorderColor="#354359"
+                    rightButtonTextColor="#C4CDDA"
+                  />
+                );
+              })
             ) : (
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>
                 <Text style={[typography.bodySmall, { color: colors.textTertiary }]}>Henüz kimse yok.</Text>
@@ -94,14 +165,19 @@ export const ProfileScreen: React.FC = () => {
             )}
           </View>
         </View>
-      </ScrollView>
+      </CollapsingHeaderScrollView>
     </Screen>
   );
 };
 
 const styles = StyleSheet.create({
   avatarRing: { padding: 4, borderRadius: 9999, borderWidth: 2 },
+  editProfileBtn: {
+    width: '80%',
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   statsRow: { flexDirection: 'row', alignItems: 'center', width: '90%' },
   statItem: { flex: 1, alignItems: 'center' },
-  statDivider: { width: 1, alignSelf: 'stretch' },
 });

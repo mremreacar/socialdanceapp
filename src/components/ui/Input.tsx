@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput, Text, StyleSheet, ViewStyle, TextInputProps } from 'react-native';
+import { View, TextInput, Text, StyleSheet, ViewStyle, TextInputProps, Platform } from 'react-native';
 import { useTheme } from '../../theme';
 import { Icon, IconName } from './Icon';
 
@@ -46,7 +46,7 @@ export const Input: React.FC<InputProps> = ({
             borderWidth: borders.thin,
             borderColor: focused ? colors.primary : error ? colors.error : colors.inputBorder,
             paddingHorizontal: spacing.lg,
-            height: 52,
+            height: INPUT_HEIGHT,
           },
         ]}
       >
@@ -63,10 +63,13 @@ export const Input: React.FC<InputProps> = ({
           style={[
             styles.input,
             typography.body,
+            styles.inputText,
             { color: colors.text, flex: 1 },
             style,
           ]}
           placeholderTextColor={colors.inputPlaceholder}
+          textAlignVertical="center"
+          {...(Platform.OS === 'android' && { includeFontPadding: false })}
           onFocus={(e) => {
             setFocused(true);
             props.onFocus?.(e);
@@ -99,6 +102,8 @@ export const Input: React.FC<InputProps> = ({
   );
 };
 
+const INPUT_HEIGHT = 52;
+
 const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
@@ -107,5 +112,10 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     padding: 0,
+    paddingVertical: 0,
+    height: INPUT_HEIGHT,
+  },
+  inputText: {
+    lineHeight: 20,
   },
 });

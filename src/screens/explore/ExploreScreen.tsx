@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
-import { Header } from '../../components/layout/Header';
+import { CollapsingHeaderScrollView } from '../../components/layout/CollapsingHeaderScrollView';
 import { EventCard } from '../../components/domain/EventCard';
 import { FilterBar } from '../../components/domain/FilterBar';
 import { SearchBar } from '../../components/domain/SearchBar';
@@ -13,6 +13,7 @@ import { Icon } from '../../components/ui/Icon';
 import { mockEvents } from '../../constants/mockData';
 import { MainStackParamList } from '../../types/navigation';
 import { Event } from '../../types/models';
+import { useLocation, getDistanceKm } from '../../hooks/useLocation';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 
@@ -23,12 +24,13 @@ export const ExploreScreen: React.FC = () => {
   const { colors, spacing, typography } = useTheme();
   const [activeFilter, setActiveFilter] = useState('Tümü');
   const [searchQuery, setSearchQuery] = useState('');
+  const { coords: userCoords } = useLocation();
 
   const filteredEvents = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    return mockEvents.filter((event) => {
+    let list = mockEvents.filter((event) => {
       const eventDate = new Date(event.rawDate!);
       const startOfEventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
 
@@ -48,7 +50,20 @@ export const ExploreScreen: React.FC = () => {
       }
       return true;
     });
-  }, [activeFilter, searchQuery]);
+
+    if (userCoords && list.some((e) => e.latitude != null && e.longitude != null)) {
+      list = [...list].sort((a, b) => {
+        const latA = a.latitude ?? 0;
+        const lonA = a.longitude ?? 0;
+        const latB = b.latitude ?? 0;
+        const lonB = b.longitude ?? 0;
+        const distA = getDistanceKm(userCoords.latitude, userCoords.longitude, latA, lonA);
+        const distB = getDistanceKm(userCoords.latitude, userCoords.longitude, latB, lonB);
+        return distA - distB;
+      });
+    }
+    return list;
+  }, [activeFilter, searchQuery, userCoords]);
 
   const openDrawer = () => {
     (navigation.getParent() as any)?.openDrawer?.();
@@ -56,40 +71,51 @@ export const ExploreScreen: React.FC = () => {
 
   return (
     <Screen>
-      <Header
-        title="Dans Gecesi Keşfet"
-        showBack={false}
-        showMenu
-        onMenuPress={openDrawer}
-      />
-
-      <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-        <SearchBar
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Etkinlik, mekan veya şehir ara"
-        />
-        <FilterBar filters={filters} activeFilter={activeFilter} onFilterChange={setActiveFilter} />
-      </View>
-
-      <Text style={[typography.captionBold, { color: colors.textSecondary, paddingHorizontal: spacing.lg, marginBottom: spacing.sm }]}>
-        {filteredEvents.length} Etkinlik Bulundu
-      </Text>
-
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {filteredEvents.length > 0 ? (
-          filteredEvents.map((event) => (
-            <View key={event.id} style={{ marginBottom: spacing.lg }}>
-              <EventCard
-                event={event as Event}
-                onPress={() => navigation.navigate('EventDetails', { id: event.id })}
-              />
+      <CollapsingHeaderScrollView
+        headerProps={{
+          title: 'Dans Gecesi Keşfet',
+          showBack: false,
+          showMenu: true,
+          onMenuPress: openDrawer,
+        }}
+        headerExtra={
+          <View>
+            <SearchBar
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Etkinlik, mekan veya şehir ara"
+              backgroundColor="#482347"
+            />
+            <View style={{ marginTop: spacing.sm }}>
+              <FilterBar filters={filters} activeFilter={activeFilter} onFilterChange={setActiveFilter} />
             </View>
-          ))
+          </View>
+        }
+        contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 100 }}
+      >
+        <Text style={[typography.captionBold, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+          {filteredEvents.length} Etkinlik Bulundu
+        </Text>
+
+        {filteredEvents.length > 0 ? (
+          filteredEvents.map((event) => {
+            const displayEvent: Event = {
+              ...(event as Event),
+              location:
+                userCoords && event.latitude != null && event.longitude != null
+                  ? `${event.location} • ${getDistanceKm(userCoords.latitude, userCoords.longitude, event.latitude, event.longitude)} km`
+                  : event.location,
+            };
+            return (
+              <View key={event.id} style={{ marginBottom: spacing.lg }}>
+                <EventCard
+                  event={displayEvent}
+                  onPress={() => navigation.navigate('EventDetails', { id: event.id })}
+                  cardBackgroundColor="#341A32"
+                />
+              </View>
+            );
+          })
         ) : (
           <View style={{ paddingVertical: 40, alignItems: 'center' }}>
             <Icon name="calendar-blank-outline" size={48} color={colors.textTertiary} />
@@ -99,9 +125,9 @@ export const ExploreScreen: React.FC = () => {
             <Button title="Filtreleri Temizle" onPress={() => setActiveFilter('Tümü')} variant="ghost" size="sm" style={{ marginTop: spacing.md }} />
           </View>
         )}
-      </ScrollView>
+      </CollapsingHeaderScrollView>
 
-      <View style={[styles.fab, { right: spacing.lg, bottom: 100 }]}>
+      <View style={[styles.fab, { right: spacing.lg, bottom: 1 }]}>
         <TouchableOpacity
           onPress={() => navigation.navigate('EditEvent')}
           activeOpacity={0.9}

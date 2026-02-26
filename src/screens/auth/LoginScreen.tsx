@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../theme';
@@ -21,13 +21,23 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
     (navigation.getParent() as any)?.reset({ index: 0, routes: [{ name: 'App' }] });
   };
 
-  return (
-    <Screen edges={['top', 'bottom']}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={[styles.container, { backgroundColor: colors.background }]}>
-          <View style={[styles.decorCircle, { backgroundColor: colors.primaryAlpha20 }]} />
+  const goToCreateProfile = () => {
+    navigation.navigate('Onboarding');
+  };
 
-          <View style={styles.logoSection}>
+  return (
+    <Screen edges={['bottom']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={[styles.scrollContent, { backgroundColor: colors.background }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.container, { backgroundColor: colors.background }]}>
+            <View style={[styles.decorCircle, { backgroundColor: colors.primaryAlpha20 }]} />
+
+            <View style={styles.logoSection}>
             <View style={[styles.logoContainer, { backgroundColor: colors.surface, borderColor: colors.border, ...shadows.xxl }]}>
               <Image
                 source={{ uri: 'https://cdn-icons-png.flaticon.com/512/3003/3003889.png' }}
@@ -42,7 +52,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
           <View style={[styles.buttonSection, { paddingHorizontal: spacing.xxl }]}>
             <TouchableOpacity
-              onPress={handleLogin}
+              onPress={goToCreateProfile}
               activeOpacity={0.8}
               style={[styles.socialButton, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.xl, ...shadows.sm }]}
             >
@@ -51,7 +61,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={handleLogin}
+              onPress={goToCreateProfile}
               activeOpacity={0.8}
               style={[styles.socialButton, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.xl, ...shadows.sm }]}
             >
@@ -65,7 +75,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
               end={{ x: 1, y: 0 }}
               style={[styles.gradientButton, { borderRadius: radius.xl }]}
             >
-              <TouchableOpacity onPress={handleLogin} activeOpacity={0.8} style={styles.gradientContent}>
+              <TouchableOpacity onPress={goToCreateProfile} activeOpacity={0.8} style={styles.gradientContent}>
                 <Icon name="instagram" size={22} color="#FFFFFF" style={styles.socialIconLeft} />
                 <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Instagram ile Bağlan</Text>
               </TouchableOpacity>
@@ -91,7 +101,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
                 <Button title="Giriş Yap" onPress={handleLogin} fullWidth style={{ marginTop: spacing.md }} />
                 <View style={styles.signupRow}>
                   <Text style={[typography.caption, { color: colors.textSecondary }]}>Hesabın yok mu? </Text>
-                  <TouchableOpacity onPress={handleLogin}>
+                  <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
                     <Text style={[typography.captionBold, { color: colors.primary }]}>Kayıt Ol</Text>
                   </TouchableOpacity>
                 </View>
@@ -102,16 +112,22 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
           <Text style={[typography.label, { color: colors.textTertiary, textAlign: 'center', paddingHorizontal: spacing.xxxl, marginBottom: spacing.lg, fontSize: 9 }]}>
             Devam ederek Socialdance Kullanım Koşulları'nı ve Gizlilik Politikası'nı kabul etmiş olursunuz.
           </Text>
-        </View>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
   );
 };
 
 const styles = StyleSheet.create({
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 24,
+  },
   container: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'space-between',
+    minHeight: '100%',
   },
   decorCircle: {
     position: 'absolute',
