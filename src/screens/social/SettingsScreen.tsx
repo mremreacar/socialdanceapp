@@ -8,20 +8,29 @@ import { Header } from '../../components/layout/Header';
 import { Icon } from '../../components/ui/Icon';
 import { Toggle } from '../../components/ui/Toggle';
 import { Button } from '../../components/ui/Button';
+import { MainStackParamList } from '../../types/navigation';
 
-const settingsSections = [
+type SettingsItem = {
+  icon: string;
+  iconBg: string;
+  label: string;
+  toggle?: boolean;
+  screen?: keyof MainStackParamList;
+};
+
+const settingsSections: { title: string; items: SettingsItem[] }[] = [
   {
     title: 'Hesap',
     items: [
-      { icon: 'account', iconBg: 'primary', label: 'Kişisel Bilgiler' },
-      { icon: 'lock', iconBg: 'blue', label: 'Şifre ve Güvenlik' },
-      { icon: 'credit-card', iconBg: 'purple', label: 'Ödemeler ve Abonelikler' },
+      { icon: 'account', iconBg: 'primary', label: 'Kişisel Bilgiler', screen: 'EditProfile' },
+      { icon: 'lock', iconBg: 'blue', label: 'Şifre ve Güvenlik', screen: 'SettingsPassword' },
+      { icon: 'credit-card', iconBg: 'purple', label: 'Ödemeler ve Abonelikler', screen: 'SettingsPayments' },
     ],
   },
   {
     title: 'Uygulama',
     items: [
-      { icon: 'bell', iconBg: 'orange', label: 'Bildirimler', toggle: true },
+      { icon: 'bell', iconBg: 'orange', label: 'Bildirimler', toggle: true, screen: 'Notifications' },
       { icon: 'weather-night', iconBg: 'zinc', label: 'Karanlık Mod', toggle: true },
       { icon: 'map-marker', iconBg: 'green', label: 'Konum Servisleri', toggle: true },
     ],
@@ -29,8 +38,8 @@ const settingsSections = [
   {
     title: 'Destek',
     items: [
-      { icon: 'help-circle', iconBg: 'teal', label: 'Yardım Merkezi' },
-      { icon: 'information', iconBg: 'yellow', label: 'Hakkımızda' },
+      { icon: 'help-circle', iconBg: 'teal', label: 'Yardım Merkezi', screen: 'SettingsHelp' },
+      { icon: 'information', iconBg: 'yellow', label: 'Hakkımızda', screen: 'SettingsAbout' },
     ],
   },
 ];
@@ -63,40 +72,57 @@ export const SettingsScreen: React.FC = () => {
             <Text style={[typography.label, { color: '#FFFFFF', marginLeft: spacing.sm, marginBottom: spacing.sm }]}>
               {section.title}
             </Text>
-            <View style={{ backgroundColor: '#311831', borderRadius: radius.xl, overflow: 'hidden', borderWidth: 1, borderColor: colors.cardBorder }}>
-              {section.items.map((item, idx) => (
-                <TouchableOpacity
-                  key={item.label}
-                  style={[
-                    styles.row,
-                    {
-                      padding: spacing.lg,
-                      borderBottomWidth: idx < section.items.length - 1 ? 1 : 0,
-                      borderBottomColor: colors.borderLight,
-                    },
-                  ]}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.iconWrap, { backgroundColor: getIconColor(item.iconBg) + '20' }]}>
-                    <Icon name={item.icon as any} size={20} color={getIconColor(item.iconBg)} />
+            <View style={{ backgroundColor: '#311831', borderRadius: radius.xl, borderWidth: 1, borderColor: colors.cardBorder }}>
+              {section.items.map((item, idx) => {
+                const hasToggle = 'toggle' in item && item.toggle;
+                const hasScreen = 'screen' in item && item.screen;
+                const onPressRow = hasScreen ? () => (navigation as any).navigate(item.screen) : undefined;
+                return (
+                  <View
+                    key={item.label}
+                    style={[
+                      styles.row,
+                      {
+                        paddingVertical: spacing.lg,
+                        paddingLeft: spacing.xl,
+                        paddingRight: spacing.xl + 40,
+                        borderBottomWidth: idx < section.items.length - 1 ? 1 : 0,
+                        borderBottomColor: colors.borderLight,
+                      },
+                    ]}
+                  >
+                    <TouchableOpacity
+                      style={styles.row}
+                      activeOpacity={0.7}
+                      onPress={onPressRow}
+                      disabled={!onPressRow}
+                    >
+                      <View style={[styles.iconWrap, { backgroundColor: getIconColor(item.iconBg) + '20' }]}>
+                        <Icon name={item.icon as any} size={20} color={getIconColor(item.iconBg)} />
+                      </View>
+                      <Text style={[typography.bodyMedium, { color: '#FFFFFF', marginLeft: spacing.md, flex: 1 }]}>{item.label}</Text>
+                    </TouchableOpacity>
+                    {hasToggle ? (
+                      <View style={styles.rightControl}>
+                        <Toggle
+                          value={item.label === 'Bildirimler' ? notifications : item.label === 'Karanlık Mod' ? darkMode : location}
+                          onValueChange={
+                            item.label === 'Bildirimler'
+                              ? setNotifications
+                              : item.label === 'Karanlık Mod'
+                              ? setDarkMode
+                              : setLocation
+                          }
+                        />
+                      </View>
+                    ) : (
+                      <TouchableOpacity onPress={onPressRow} hitSlop={8} style={styles.rightControl}>
+                        <Icon name="chevron-right" size={20} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    )}
                   </View>
-                  <Text style={[typography.bodyMedium, { color: '#FFFFFF', flex: 1, marginLeft: spacing.md }]}>{item.label}</Text>
-                  {'toggle' in item && item.toggle ? (
-                    <Toggle
-                      value={item.label === 'Bildirimler' ? notifications : item.label === 'Karanlık Mod' ? darkMode : location}
-                      onValueChange={
-                        item.label === 'Bildirimler'
-                          ? setNotifications
-                          : item.label === 'Karanlık Mod'
-                          ? setDarkMode
-                          : setLocation
-                      }
-                    />
-                  ) : (
-                    <Icon name="chevron-right" size={20} color="#FFFFFF" />
-                  )}
-                </TouchableOpacity>
-              ))}
+                );
+              })}
             </View>
           </View>
         ))}
@@ -122,4 +148,5 @@ export const SettingsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center' },
   iconWrap: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  rightControl: { width: 44, alignItems: 'flex-end', justifyContent: 'center' },
 });

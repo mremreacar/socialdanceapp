@@ -32,6 +32,10 @@ export type MainStackParamList = {
   Settings: undefined;
   EditProfile: undefined;
   Notifications: undefined;
+  SettingsPassword: undefined;
+  SettingsPayments: undefined;
+  SettingsHelp: undefined;
+  SettingsAbout: undefined;
 };
 
 export type DrawerParamList = {

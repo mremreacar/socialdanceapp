@@ -40,32 +40,32 @@ export const ClassDetailsScreen: React.FC<Props> = ({ navigation }) => {
           <View style={[styles.tag, { backgroundColor: colors.primaryAlpha20 }]}>
             <Text style={[typography.captionBold, { color: colors.primary }]}>{mockClass.level}</Text>
           </View>
-          <Text style={[typography.h3, { color: colors.text, marginTop: spacing.sm }]}>{mockClass.title}</Text>
+          <Text style={[typography.h3, { color: '#FFFFFF', marginTop: spacing.sm }]}>{mockClass.title}</Text>
 
           <View style={[styles.instructorRow, { marginTop: spacing.lg }]}>
             <Avatar source={mockClass.instructorAvatar} size="md" />
             <View style={{ marginLeft: spacing.md }}>
-              <Text style={[typography.bodySmallBold, { color: colors.text }]}>{mockClass.instructor}</Text>
-              <Text style={[typography.caption, { color: colors.textSecondary }]}>Eğitmen</Text>
+              <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{mockClass.instructor}</Text>
+              <Text style={[typography.caption, { color: 'rgba(255,255,255,0.8)' }]}>Eğitmen</Text>
             </View>
           </View>
 
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.xl }}>
             <View style={[styles.detailBox, { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.md }]}>
               <Icon name="calendar-clock" size={20} color={colors.primary} />
-              <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 4 }]}>{mockClass.day} • {mockClass.time}</Text>
+              <Text style={[typography.caption, { color: 'rgba(255,255,255,0.8)', marginTop: 4 }]}>{mockClass.day} • {mockClass.time}</Text>
             </View>
             <View style={[styles.detailBox, { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.md }]}>
               <Icon name="timer-outline" size={20} color={colors.primary} />
-              <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 4 }]}>{mockClass.duration}</Text>
+              <Text style={[typography.caption, { color: 'rgba(255,255,255,0.8)', marginTop: 4 }]}>{mockClass.duration}</Text>
             </View>
           </View>
 
-          <Text style={[typography.bodySmallBold, { color: colors.text, marginTop: spacing.xl }]}>Gerekli malzemeler</Text>
+          <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginTop: spacing.xl }]}>Gerekli malzemeler</Text>
           {mockClass.requirements.map((r, i) => (
             <View key={i} style={[styles.row, { marginTop: spacing.sm }]}>
               <Icon name="check-circle" size={18} color={colors.success} />
-              <Text style={[typography.bodySmall, { color: colors.text, marginLeft: 8 }]}>{r}</Text>
+              <Text style={[typography.bodySmall, { color: '#FFFFFF', marginLeft: 8 }]}>{r}</Text>
             </View>
           ))}
 

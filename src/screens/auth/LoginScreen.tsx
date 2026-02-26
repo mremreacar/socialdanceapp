@@ -71,7 +71,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
               activeOpacity={0.8}
               style={[styles.socialButton, { backgroundColor: '#1E1E1E', borderWidth: 1, borderColor: '#384253', borderRadius: radius.xl, ...shadows.sm }]}
             >
-              <Image source={{ uri: 'https://www.svgrepo.com/show/475656/google-color.svg' }} style={styles.socialIcon} />
+              <Icon name="google" size={22} color="#FFFFFF" style={styles.socialIconLeft} />
               <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Google ile Devam Et</Text>
             </TouchableOpacity>
 

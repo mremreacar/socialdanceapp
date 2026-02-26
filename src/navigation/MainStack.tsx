@@ -18,6 +18,10 @@ import { ProductDetailScreen } from '../screens/marketplace/ProductDetailScreen'
 import { SettingsScreen } from '../screens/social/SettingsScreen';
 import { EditProfileScreen } from '../screens/social/EditProfileScreen';
 import { NotificationsScreen } from '../screens/social/NotificationsScreen';
+import { SettingsPasswordScreen } from '../screens/social/SettingsPasswordScreen';
+import { SettingsPaymentsScreen } from '../screens/social/SettingsPaymentsScreen';
+import { SettingsHelpScreen } from '../screens/social/SettingsHelpScreen';
+import { SettingsAboutScreen } from '../screens/social/SettingsAboutScreen';
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
 
@@ -41,6 +45,10 @@ export const MainStack: React.FC = () => {
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen name="SettingsPassword" component={SettingsPasswordScreen} />
+      <Stack.Screen name="SettingsPayments" component={SettingsPaymentsScreen} />
+      <Stack.Screen name="SettingsHelp" component={SettingsHelpScreen} />
+      <Stack.Screen name="SettingsAbout" component={SettingsAboutScreen} />
     </Stack.Navigator>
   );
 };

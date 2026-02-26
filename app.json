@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.socialdancemobile",
+      "bundleIdentifier": "com.socialdanceapp.dev",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Profil fotoğrafı seçmek için galerinize erişmemize izin verin.",
         "NSLocationWhenInUseUsageDescription": "Çevrenizdeki dans etkinliklerini gösterebilmek için konumunuza erişmemize izin verin."
@@ -27,7 +27,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.socialdancemobile",
+      "package": "com.socialdanceapp.dev",
       "permissions": [
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_EXTERNAL_STORAGE",
