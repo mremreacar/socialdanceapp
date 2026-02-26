@@ -1,14 +1,20 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
+import { View, Text, TouchableOpacity, Image, StyleSheet, ViewStyle } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../theme';
 import { Icon, IconName } from '../ui/Icon';
 
+const headerLogo = require('../../../assets/header-logo.png');
+
 interface HeaderProps {
   title: string;
+  /** Başlık yerine logo göster (ana sayfalar için) */
+  showLogo?: boolean;
   showBack?: boolean;
   showMenu?: boolean;
   onMenuPress?: () => void;
+  showNotification?: boolean;
+  onNotificationPress?: () => void;
   rightIcon?: IconName;
   onRightPress?: () => void;
   rightComponent?: React.ReactNode;
@@ -18,9 +24,12 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   title,
+  showLogo = false,
   showBack = true,
   showMenu = false,
   onMenuPress,
+  showNotification = false,
+  onNotificationPress,
   rightIcon,
   onRightPress,
   rightComponent,
@@ -49,14 +58,14 @@ export const Header: React.FC<HeaderProps> = ({
             style={[
               styles.iconButton,
               {
-                backgroundColor: colors.surface,
+                backgroundColor: 'transparent',
                 borderRadius: radius.full,
-                borderWidth: 1,
-                borderColor: colors.border,
+                borderWidth: 0.5,
+                borderColor: '#9CA3AF',
               },
             ]}
           >
-            <Icon name="menu" size={22} color={colors.icon} />
+            <Icon name="menu" size={22} color="#9CA3AF" />
           </TouchableOpacity>
         )}
         {showBack && (
@@ -65,23 +74,45 @@ export const Header: React.FC<HeaderProps> = ({
             style={[
               styles.iconButton,
               {
-                backgroundColor: colors.surface,
+                backgroundColor: 'transparent',
                 borderRadius: radius.full,
-                borderWidth: 1,
-                borderColor: colors.border,
+                borderWidth: 0.5,
+                borderColor: '#9CA3AF',
               },
             ]}
           >
-            <Icon name="chevron-left" size={22} color={colors.icon} />
+            <Icon name="chevron-left" size={22} color="#9CA3AF" />
           </TouchableOpacity>
         )}
       </View>
 
-      <Text style={[typography.h4, { color: colors.headerText ?? colors.text }]} numberOfLines={1}>
-        {title}
-      </Text>
+      {showLogo ? (
+        <View style={styles.headerLogoWrap}>
+          <Image source={headerLogo} style={styles.headerLogo} resizeMode="contain" />
+        </View>
+      ) : (
+        <Text style={[typography.h4, { color: colors.headerText ?? colors.text }]} numberOfLines={1}>
+          {title}
+        </Text>
+      )}
 
       <View style={styles.right}>
+        {showNotification && onNotificationPress && (
+          <TouchableOpacity
+            onPress={onNotificationPress}
+            style={[
+              styles.iconButton,
+              {
+                backgroundColor: 'transparent',
+                borderRadius: radius.full,
+                borderWidth: 0.5,
+                borderColor: '#9CA3AF',
+              },
+            ]}
+          >
+            <Icon name="bell-outline" size={22} color="#9CA3AF" />
+          </TouchableOpacity>
+        )}
         {rightComponent}
         {rightIcon && onRightPress && (
           <TouchableOpacity
@@ -89,17 +120,17 @@ export const Header: React.FC<HeaderProps> = ({
             style={[
               styles.iconButton,
               {
-                backgroundColor: colors.surface,
+                backgroundColor: 'transparent',
                 borderRadius: radius.full,
-                borderWidth: 1,
-                borderColor: colors.border,
+                borderWidth: 0.5,
+                borderColor: '#9CA3AF',
               },
             ]}
           >
-            <Icon name={rightIcon} size={22} color={colors.icon} />
+            <Icon name={rightIcon} size={22} color="#9CA3AF" />
           </TouchableOpacity>
         )}
-        {!rightComponent && !rightIcon && <View style={styles.spacer} />}
+        {!rightComponent && !rightIcon && !showNotification && <View style={styles.spacer} />}
       </View>
     </View>
   );
@@ -132,5 +163,14 @@ const styles = StyleSheet.create({
   },
   spacer: {
     width: 40,
+  },
+  headerLogoWrap: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  headerLogo: {
+    height: 50,
+    width: 140,
   },
 });

@@ -26,11 +26,16 @@ export const ChatListScreen: React.FC = () => {
       <Header
         title="Mesajlar"
         showBack
-        rightIcon="pencil"
+        rightIcon="plus"
         onRightPress={() => navigation.navigate('NewChat')}
       />
       <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-        <SearchBar value={search} onChangeText={setSearch} placeholder="Ara..." />
+        <SearchBar
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Ara..."
+          backgroundColor="#482347"
+        />
       </View>
       <FlatList
         data={filtered}
@@ -44,6 +49,7 @@ export const ChatListScreen: React.FC = () => {
             timestamp={item.time}
             unreadCount={item.unread}
             showOnline={item.isOnline}
+            nameColor="#FFFFFF"
             onPress={() =>
               navigation.navigate('ChatDetail', {
                 id: item.id,

@@ -1,18 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
+import { useFonts } from '@expo-google-fonts/poppins/useFonts';
+import { Poppins_400Regular, Poppins_700Bold } from '@expo-google-fonts/poppins';
 import { ThemeProvider } from './src/theme';
 import { ProfileProvider } from './src/context/ProfileContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
-import { storage } from './src/services/storage';
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    storage.isLoggedIn().then(setIsLoggedIn);
-  }, []);
+  const [fontsLoaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_700Bold,
+  });
 
   useEffect(() => {
     import('./src/services/notifications')
@@ -20,8 +21,12 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  if (isLoggedIn === null) {
-    return null;
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#231022' }}>
+        <ActivityIndicator size="large" color="#ee2bee" />
+      </View>
+    );
   }
 
   return (
@@ -30,7 +35,7 @@ export default function App() {
         <ThemeProvider>
           <ProfileProvider>
             <NavigationContainer>
-              <RootNavigator initialRouteName={isLoggedIn ? 'App' : 'Auth'} />
+              <RootNavigator initialRouteName="Auth" />
             </NavigationContainer>
           </ProfileProvider>
         </ThemeProvider>

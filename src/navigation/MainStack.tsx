@@ -16,6 +16,7 @@ import { AddProductScreen } from '../screens/marketplace/AddProductScreen';
 import { ProductDetailScreen } from '../screens/marketplace/ProductDetailScreen';
 import { SettingsScreen } from '../screens/social/SettingsScreen';
 import { EditProfileScreen } from '../screens/social/EditProfileScreen';
+import { NotificationsScreen } from '../screens/social/NotificationsScreen';
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
 
@@ -37,6 +38,7 @@ export const MainStack: React.FC = () => {
       <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} />
     </Stack.Navigator>
   );
 };

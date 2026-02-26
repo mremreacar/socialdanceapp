@@ -49,7 +49,15 @@ export const DancerTrackScreen: React.FC = () => {
   return (
     <Screen>
       <CollapsingHeaderScrollView
-        headerProps={{ title: 'Etkinliklerim', showBack: false, showMenu: true, onMenuPress: openDrawer }}
+        headerProps={{
+          title: 'Etkinliklerim',
+          showLogo: false,
+          showBack: false,
+          showMenu: true,
+          onMenuPress: openDrawer,
+          showNotification: true,
+          onNotificationPress: () => (navigation.getParent() as any)?.navigate('Notifications'),
+        }}
         headerExtra={
           <View>
             <TabSwitch

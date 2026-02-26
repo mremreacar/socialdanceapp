@@ -74,9 +74,12 @@ export const ExploreScreen: React.FC = () => {
       <CollapsingHeaderScrollView
         headerProps={{
           title: 'Dans Gecesi Keşfet',
+          showLogo: false,
           showBack: false,
           showMenu: true,
           onMenuPress: openDrawer,
+          showNotification: true,
+          onNotificationPress: () => (navigation.getParent() as any)?.navigate('Notifications'),
         }}
         headerExtra={
           <View>

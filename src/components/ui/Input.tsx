@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput, Text, StyleSheet, ViewStyle, TextInputProps, Platform } from 'react-native';
+import { View, TextInput, Text, TouchableOpacity, StyleSheet, ViewStyle, TextInputProps, Platform } from 'react-native';
 import { useTheme } from '../../theme';
 import { Icon, IconName } from './Icon';
 
@@ -10,6 +10,9 @@ interface InputProps extends TextInputProps {
   rightIcon?: IconName;
   onRightIconPress?: () => void;
   containerStyle?: ViewStyle;
+  borderColor?: string;
+  /** Input kutusunun iç arka plan rengi (örn. #311831) */
+  backgroundColor?: string;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -19,11 +22,15 @@ export const Input: React.FC<InputProps> = ({
   rightIcon,
   onRightIconPress,
   containerStyle,
+  borderColor: borderColorProp,
+  backgroundColor: backgroundColorProp,
   style,
   ...props
 }) => {
   const { colors, typography, radius, spacing, borders } = useTheme();
   const [focused, setFocused] = useState(false);
+  const borderColor = borderColorProp ?? (focused ? colors.primary : error ? colors.error : colors.inputBorder);
+  const inputBg = backgroundColorProp ?? colors.inputBg;
 
   return (
     <View style={containerStyle}>
@@ -41,10 +48,10 @@ export const Input: React.FC<InputProps> = ({
         style={[
           styles.inputContainer,
           {
-            backgroundColor: colors.inputBg,
+            backgroundColor: inputBg,
             borderRadius: radius.xl,
             borderWidth: borders.thin,
-            borderColor: focused ? colors.primary : error ? colors.error : colors.inputBorder,
+            borderColor,
             paddingHorizontal: spacing.lg,
             height: INPUT_HEIGHT,
           },
@@ -80,12 +87,13 @@ export const Input: React.FC<InputProps> = ({
           }}
         />
         {rightIcon && (
-          <Icon
-            name={rightIcon}
-            size={20}
-            color={colors.inputPlaceholder}
-            style={{ marginLeft: spacing.sm }}
-          />
+          onRightIconPress ? (
+            <TouchableOpacity onPress={onRightIconPress} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ marginLeft: spacing.sm }}>
+              <Icon name={rightIcon} size={20} color={colors.inputPlaceholder} />
+            </TouchableOpacity>
+          ) : (
+            <Icon name={rightIcon} size={20} color={colors.inputPlaceholder} style={{ marginLeft: spacing.sm }} />
+          )
         )}
       </View>
       {error && (

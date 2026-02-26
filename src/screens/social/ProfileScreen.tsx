@@ -11,11 +11,13 @@ import { UserListItem } from '../../components/domain/UserListItem';
 import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { mockFollowing } from '../../constants/mockData';
 
-const followersList = [
+const initialFollowers = [
   { id: 5, name: 'Zeynep Su', handle: '@zeynepsu', img: 'https://i.pravatar.cc/150?u=25' },
   { id: 6, name: 'Burak Öz', handle: '@burakoz', img: 'https://i.pravatar.cc/150?u=26' },
 ];
-const requestsList = [{ id: 7, name: 'Gizem Ak', handle: '@gizemak', img: 'https://i.pravatar.cc/150?u=27' }];
+const initialRequests = [{ id: 7, name: 'Gizem Ak', handle: '@gizemak', img: 'https://i.pravatar.cc/150?u=27' }];
+
+type UserItem = { id: number; name: string; handle: string; img: string };
 
 export const ProfileScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -25,6 +27,8 @@ export const ProfileScreen: React.FC = () => {
   const [dancedCount] = useState(42);
   const [unfollowedIds, setUnfollowedIds] = useState<Set<number>>(new Set());
   const [confirmModal, setConfirmModal] = useState<{ userId: number; userName: string } | null>(null);
+  const [followersList, setFollowersList] = useState<UserItem[]>(initialFollowers);
+  const [requestsList, setRequestsList] = useState<UserItem[]>(initialRequests);
 
   const openDrawer = () => (navigation.getParent() as any)?.openDrawer?.();
 
@@ -45,6 +49,11 @@ export const ProfileScreen: React.FC = () => {
       next.delete(userId);
       return next;
     });
+  };
+
+  const handleAcceptRequest = (user: UserItem) => {
+    setRequestsList((prev) => prev.filter((u) => u.id !== user.id));
+    setFollowersList((prev) => [...prev, user]);
   };
 
   const getList = () => {
@@ -71,9 +80,12 @@ export const ProfileScreen: React.FC = () => {
       <CollapsingHeaderScrollView
         headerProps={{
           title: 'Profil',
+          showLogo: false,
           showBack: false,
           showMenu: true,
           onMenuPress: openDrawer,
+          showNotification: true,
+          onNotificationPress: () => (navigation.getParent() as any)?.navigate('Notifications'),
           rightIcon: 'cog',
           onRightPress: () => (navigation.getParent() as any)?.navigate('Settings'),
         }}
@@ -88,7 +100,7 @@ export const ProfileScreen: React.FC = () => {
         </View>
         <Text style={[typography.h3, { color: '#FFFFFF', marginTop: spacing.md }]}>{profile.displayName}</Text>
         <Text style={[typography.bodySmall, { color: '#FFFFFF' }]}>@{profile.username}</Text>
-        <Text style={[typography.bodySmall, { color: '#919FB4', textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.xxl }]}>
+        <Text style={[typography.bodySmall, { color: '#9CA3AF', textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.xxl }]}>
           {profile.bio}
         </Text>
 
@@ -97,21 +109,21 @@ export const ProfileScreen: React.FC = () => {
           activeOpacity={0.8}
           style={[styles.editProfileBtn, { backgroundColor: '#4B154B', borderRadius: 50, marginTop: spacing.xl }]}
         >
-          <Text style={[typography.bodySmallBold, { color: '#F22DF3' }]}>Profili düzenle</Text>
+          <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Profili düzenle</Text>
         </TouchableOpacity>
 
-        <View style={[styles.statsRow, { backgroundColor: '#2C1C2D', borderRadius: 50, padding: spacing.lg, marginTop: spacing.md }]}>
+        <View style={[styles.statsRow, { backgroundColor: '#311831', borderRadius: 50, padding: spacing.lg, marginTop: spacing.md, borderWidth: 0.5, borderColor: '#9CA3AF' }]}>
           <TouchableOpacity style={styles.statItem} onPress={() => setActiveTab('following')}>
             <Text style={[typography.bodyBold, { color: '#FFFFFF' }]}>{mockFollowing.length - unfollowedIds.size}</Text>
-            <Text style={[typography.label, { color: '#919FB4' }]}>Takip Edilen</Text>
+            <Text style={[typography.label, { color: '#FFFFFF' }]}>Takip Edilen</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.statItem} onPress={() => setActiveTab('followers')}>
             <Text style={[typography.bodyBold, { color: '#FFFFFF' }]}>{followersList.length}</Text>
-            <Text style={[typography.label, { color: '#919FB4' }]}>Takipçi</Text>
+            <Text style={[typography.label, { color: '#FFFFFF' }]}>Takipçi</Text>
           </TouchableOpacity>
           <View style={styles.statItem}>
             <Text style={[typography.bodyBold, { color: '#FFFFFF' }]}>{dancedCount}</Text>
-            <Text style={[typography.label, { color: '#919FB4' }]}>Dans Edilen</Text>
+            <Text style={[typography.label, { color: '#FFFFFF' }]}>Dans Edilen</Text>
           </View>
         </View>
 
@@ -120,15 +132,15 @@ export const ProfileScreen: React.FC = () => {
             tabs={[
               { key: 'following', label: 'Takip Edilen' },
               { key: 'followers', label: 'Takipçiler' },
-              { key: 'requests', label: 'İstekler', badge: requestsList.length },
+              { key: 'requests', label: 'İstekler', badge: requestsList.length > 0 ? requestsList.length : undefined },
             ]}
             activeTab={activeTab}
             onTabChange={(k) => setActiveTab(k as any)}
             containerRadius={50}
-            containerBgColor="#1E283A"
+            containerBgColor="#311831"
             indicatorColor="#020617"
-            textColor="#FFFFFF"
-            activeTextColor="#EE2AEE"
+            textColor="#9CA3AF"
+            activeTextColor="#FFFFFF"
           />
           <View style={{ marginTop: spacing.lg }}>
             {getList().length > 0 ? (
@@ -138,7 +150,7 @@ export const ProfileScreen: React.FC = () => {
                   activeTab === 'requests' ? 'Onayla' : isUnfollowed ? 'Takip Et' : 'Takipten Çık';
                 const onRightPress =
                   activeTab === 'requests'
-                    ? () => {}
+                    ? () => handleAcceptRequest(user)
                     : isUnfollowed
                       ? () => handleFollowPress(user.id)
                       : () => handleUnfollowPress(user.id, user.name);
@@ -152,15 +164,15 @@ export const ProfileScreen: React.FC = () => {
                     rightVariant={activeTab === 'requests' ? 'primary' : 'outline'}
                     onRightPress={onRightPress}
                     nameColor="#FFFFFF"
-                    subtitleColor="#919FB4"
-                    rightButtonBorderColor="#354359"
-                    rightButtonTextColor="#C4CDDA"
+                    subtitleColor="#9CA3AF"
+                    rightButtonBorderColor="#9CA3AF"
+                    rightButtonTextColor="#9CA3AF"
                   />
                 );
               })
             ) : (
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-                <Text style={[typography.bodySmall, { color: colors.textTertiary }]}>Henüz kimse yok.</Text>
+                <Text style={[typography.bodySmall, { color: '#FFFFFF' }]}>Henüz kimse yok.</Text>
               </View>
             )}
           </View>

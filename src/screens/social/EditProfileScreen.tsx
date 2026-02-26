@@ -125,90 +125,111 @@ export const EditProfileScreen: React.FC = () => {
             </View>
           </TouchableOpacity>
 
-          <Text style={[typography.label, { color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.xs }]}>Ad</Text>
+          <Text style={[typography.label, { color: '#FFFFFF', marginTop: spacing.lg, marginBottom: spacing.xs }]}>Ad</Text>
           <Input
             value={ad}
             onChangeText={setAd}
             placeholder="Adınız"
+            placeholderTextColor="rgba(255,255,255,0.5)"
             containerStyle={{ marginBottom: spacing.md }}
+            backgroundColor="#311831"
+            style={{ color: '#FFFFFF' }}
           />
 
-          <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.xs }]}>Soyad</Text>
+          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Soyad</Text>
           <Input
             value={soyad}
             onChangeText={setSoyad}
             placeholder="Soyadınız"
+            placeholderTextColor="rgba(255,255,255,0.5)"
             containerStyle={{ marginBottom: spacing.md }}
+            backgroundColor="#311831"
+            style={{ color: '#FFFFFF' }}
           />
 
-          <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.xs }]}>Kullanıcı adı</Text>
+          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Kullanıcı adı</Text>
           <Input
             value={kullaniciAdi}
             onChangeText={setKullaniciAdi}
             placeholder="@kullaniciadi"
+            placeholderTextColor="rgba(255,255,255,0.5)"
             autoCapitalize="none"
             containerStyle={{ marginBottom: spacing.md }}
+            backgroundColor="#311831"
+            style={{ color: '#FFFFFF' }}
           />
 
-          <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.xs }]}>Hakkımda</Text>
+          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Hakkımda</Text>
           <View style={{ marginBottom: spacing.md }}>
             <TextInput
               value={hakkimda}
               onChangeText={setHakkimda}
               placeholder="Kendinizi kısaca tanıtın..."
-              placeholderTextColor={colors.inputPlaceholder}
+              placeholderTextColor="rgba(255,255,255,0.5)"
               multiline
               numberOfLines={3}
               style={[
                 typography.body,
                 {
-                  backgroundColor: colors.inputBg,
+                  backgroundColor: '#311831',
                   borderRadius: radius.xl,
                   borderWidth: 1,
                   borderColor: colors.inputBorder,
                   paddingHorizontal: spacing.lg,
                   paddingVertical: spacing.md,
                   minHeight: 88,
-                  color: colors.text,
+                  color: '#FFFFFF',
                   textAlignVertical: 'top',
                 },
               ]}
             />
           </View>
 
-          <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.xs }]}>E-posta</Text>
+          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>E-posta</Text>
           <Input
             value={email}
             onChangeText={setEmail}
             placeholder="ornek@email.com"
+            placeholderTextColor="rgba(255,255,255,0.5)"
             keyboardType="email-address"
             autoCapitalize="none"
             containerStyle={{ marginBottom: spacing.md }}
+            backgroundColor="#311831"
+            style={{ color: '#FFFFFF' }}
           />
 
-          <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.xs }]}>Telefon</Text>
+          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Telefon</Text>
           <Input
             value={telefon}
             onChangeText={setTelefon}
             placeholder="5XX XXX XX XX"
+            placeholderTextColor="rgba(255,255,255,0.5)"
             keyboardType="phone-pad"
             containerStyle={{ marginBottom: spacing.md }}
+            backgroundColor="#311831"
+            style={{ color: '#FFFFFF' }}
           />
 
-          <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.xs }]}>Şehir</Text>
+          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Şehir</Text>
           <Input
             value={sehir}
             onChangeText={setSehir}
             placeholder="Şehir"
+            placeholderTextColor="rgba(255,255,255,0.5)"
             containerStyle={{ marginBottom: spacing.md }}
+            backgroundColor="#311831"
+            style={{ color: '#FFFFFF' }}
           />
 
-          <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.xs }]}>Favori dans türleri</Text>
+          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Favori dans türleri</Text>
           <Input
             value={favoriDans}
             onChangeText={setFavoriDans}
             placeholder="Örn: Salsa, Bachata, Tango"
+            placeholderTextColor="rgba(255,255,255,0.5)"
             containerStyle={{ marginBottom: spacing.xl }}
+            backgroundColor="#311831"
+            style={{ color: '#FFFFFF' }}
           />
 
           <Button title="Kaydet" onPress={handleSave} fullWidth size="lg" />

@@ -60,10 +60,10 @@ export const SettingsScreen: React.FC = () => {
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
         {settingsSections.map((section) => (
           <View key={section.title} style={{ marginBottom: spacing.xl }}>
-            <Text style={[typography.label, { color: colors.textSecondary, marginLeft: spacing.sm, marginBottom: spacing.sm }]}>
+            <Text style={[typography.label, { color: '#FFFFFF', marginLeft: spacing.sm, marginBottom: spacing.sm }]}>
               {section.title}
             </Text>
-            <View style={{ backgroundColor: colors.surface, borderRadius: radius.xl, overflow: 'hidden', borderWidth: 1, borderColor: colors.cardBorder }}>
+            <View style={{ backgroundColor: '#311831', borderRadius: radius.xl, overflow: 'hidden', borderWidth: 1, borderColor: colors.cardBorder }}>
               {section.items.map((item, idx) => (
                 <TouchableOpacity
                   key={item.label}
@@ -80,7 +80,7 @@ export const SettingsScreen: React.FC = () => {
                   <View style={[styles.iconWrap, { backgroundColor: getIconColor(item.iconBg) + '20' }]}>
                     <Icon name={item.icon as any} size={20} color={getIconColor(item.iconBg)} />
                   </View>
-                  <Text style={[typography.bodyMedium, { color: colors.text, flex: 1, marginLeft: spacing.md }]}>{item.label}</Text>
+                  <Text style={[typography.bodyMedium, { color: '#FFFFFF', flex: 1, marginLeft: spacing.md }]}>{item.label}</Text>
                   {'toggle' in item && item.toggle ? (
                     <Toggle
                       value={item.label === 'Bildirimler' ? notifications : item.label === 'Karanlık Mod' ? darkMode : location}
@@ -93,7 +93,7 @@ export const SettingsScreen: React.FC = () => {
                       }
                     />
                   ) : (
-                    <Icon name="chevron-right" size={20} color={colors.textTertiary} />
+                    <Icon name="chevron-right" size={20} color="#FFFFFF" />
                   )}
                 </TouchableOpacity>
               ))}
@@ -111,7 +111,7 @@ export const SettingsScreen: React.FC = () => {
           fullWidth
           icon="logout"
         />
-        <Text style={[typography.caption, { color: colors.textTertiary, textAlign: 'center', marginTop: spacing.lg }]}>
+        <Text style={[typography.caption, { color: '#FFFFFF', textAlign: 'center', marginTop: spacing.lg }]}>
           Socialdance v1.0.2 (Build 2024)
         </Text>
       </ScrollView>

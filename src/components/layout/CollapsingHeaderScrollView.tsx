@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, ScrollViewProps } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme';
 import { Header } from './Header';
 
 const HEADER_HEIGHT = 60;
-const HEADER_TOP_PADDING = 30;
 const HEADER_EXTRA_HEIGHT = 100;
 
 type HeaderProps = React.ComponentProps<typeof Header>;
@@ -24,11 +24,12 @@ export const CollapsingHeaderScrollView: React.FC<CollapsingHeaderScrollViewProp
   ...scrollViewProps
 }) => {
   const { colors } = useTheme();
-  const headerTotal = HEADER_HEIGHT + HEADER_TOP_PADDING + (headerExtra ? HEADER_EXTRA_HEIGHT : 0);
+  const insets = useSafeAreaInsets();
+  const headerTotal = insets.top + HEADER_HEIGHT + (headerExtra ? HEADER_EXTRA_HEIGHT : 0);
 
   return (
     <>
-      <View style={[styles.headerWrap, { paddingTop: HEADER_TOP_PADDING, backgroundColor: colors.headerBg }]}>
+      <View style={[styles.headerWrap, { paddingTop: insets.top, backgroundColor: colors.headerBg }]}>
         <Header {...headerProps} />
         {headerExtra && <View style={styles.headerExtra}>{headerExtra}</View>}
       </View>

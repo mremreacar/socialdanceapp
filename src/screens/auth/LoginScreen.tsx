@@ -35,16 +35,31 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <View style={[styles.decorCircle, { backgroundColor: colors.primaryAlpha20 }]} />
+            <View style={styles.glowWrapper} pointerEvents="none">
+              <View
+                style={[
+                  styles.decorCircle,
+                  {
+                    backgroundColor: colors.primaryAlpha20,
+                    shadowColor: colors.primary,
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: 0.5,
+                    shadowRadius: 100,
+                    elevation: 0,
+                  },
+                ]}
+              />
+            </View>
 
             <View style={styles.logoSection}>
             <View style={[styles.logoContainer, { backgroundColor: colors.surface, borderColor: colors.border, ...shadows.xxl }]}>
               <Image
-                source={{ uri: 'https://cdn-icons-png.flaticon.com/512/3003/3003889.png' }}
+                source={require('../../../assets/login-logo.png')}
                 style={styles.logo}
+                resizeMode="contain"
               />
             </View>
-            <Text style={[typography.h1, { color: colors.text, marginTop: spacing.lg }]}>Socialdance</Text>
+            <Text style={[typography.h1, { color: '#FFFFFF', marginTop: spacing.lg }]}>Socialdance</Text>
             <Text style={[typography.bodySmall, { color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.xxxl }]}>
               Dans dünyasını keşfet, yeni partnerler bul ve en iyi etkinliklerde yerini al.
             </Text>
@@ -54,19 +69,19 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
             <TouchableOpacity
               onPress={goToCreateProfile}
               activeOpacity={0.8}
-              style={[styles.socialButton, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.xl, ...shadows.sm }]}
+              style={[styles.socialButton, { backgroundColor: '#1E1E1E', borderWidth: 1, borderColor: '#384253', borderRadius: radius.xl, ...shadows.sm }]}
             >
               <Image source={{ uri: 'https://www.svgrepo.com/show/475656/google-color.svg' }} style={styles.socialIcon} />
-              <Text style={[typography.bodySmallBold, { color: colors.text }]}>Google ile Devam Et</Text>
+              <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Google ile Devam Et</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={goToCreateProfile}
               activeOpacity={0.8}
-              style={[styles.socialButton, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.xl, ...shadows.sm }]}
+              style={[styles.socialButton, { backgroundColor: '#1E1E1E', borderWidth: 1, borderColor: '#384253', borderRadius: radius.xl, ...shadows.sm }]}
             >
-              <Icon name="apple" size={22} color={colors.text} style={styles.socialIconLeft} />
-              <Text style={[typography.bodySmallBold, { color: colors.text }]}>Apple ile Devam Et</Text>
+              <Icon name="apple" size={22} color="#FFFFFF" style={styles.socialIconLeft} />
+              <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Apple ile Devam Et</Text>
             </TouchableOpacity>
 
             <LinearGradient
@@ -95,9 +110,9 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
             </TouchableOpacity>
 
             {emailOpen && (
-              <View style={[styles.emailForm, { backgroundColor: colors.surface, borderRadius: radius.xxl, borderWidth: 1, borderColor: colors.borderLight, ...shadows.xl }]}>
-                <Input placeholder="E-posta Adresi" keyboardType="email-address" autoCapitalize="none" />
-                <Input placeholder="Şifre" secureTextEntry containerStyle={{ marginTop: spacing.md }} />
+              <View style={[styles.emailForm, { backgroundColor: '#23101D', borderRadius: radius.xxl, borderWidth: 1, borderColor: colors.borderLight, ...shadows.xl }]}>
+                <Input placeholder="E-posta Adresi" keyboardType="email-address" autoCapitalize="none" borderColor="#384253" />
+                <Input placeholder="Şifre" secureTextEntry containerStyle={{ marginTop: spacing.md }} borderColor="#384253" />
                 <Button title="Giriş Yap" onPress={handleLogin} fullWidth style={{ marginTop: spacing.md }} />
                 <View style={styles.signupRow}>
                   <Text style={[typography.caption, { color: colors.textSecondary }]}>Hesabın yok mu? </Text>
@@ -129,10 +144,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     minHeight: '100%',
   },
-  decorCircle: {
+  glowWrapper: {
     position: 'absolute',
     top: -80,
     right: -80,
+    width: 256,
+    height: 256,
+    overflow: 'visible',
+  },
+  decorCircle: {
     width: 256,
     height: 256,
     borderRadius: 128,
@@ -151,9 +171,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   logo: {
-    width: 100,
-    height: 100,
-    resizeMode: 'contain',
+    width: '100%',
+    height: '100%',
   },
   buttonSection: {
     flex: 1,

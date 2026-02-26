@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Image, StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MainTabsParamList } from '../types/navigation';
 import { useTheme } from '../theme';
@@ -12,6 +12,8 @@ import { ProfileScreen } from '../screens/social/ProfileScreen';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const Tab = createBottomTabNavigator<MainTabsParamList>();
+
+const tabDanceIcon = require('../../assets/tab-dance-icon.png');
 
 const tabIcons: Record<keyof MainTabsParamList, { active: IconName; inactive: IconName }> = {
   Explore: { active: 'compass', inactive: 'compass-outline' },
@@ -66,7 +68,9 @@ export const MainTabs: React.FC = () => {
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                 >
-                  <Icon name={iconName} size={26} color="#FFFFFF" />
+                  <View style={styles.tabDanceIconWrap}>
+                    <Image source={tabDanceIcon} style={styles.tabDanceIcon} resizeMode="contain" />
+                  </View>
                 </LinearGradient>
               </View>
             );
@@ -92,9 +96,9 @@ const styles = StyleSheet.create({
     top: -22,
   },
   centerTab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#a855f7',
@@ -102,5 +106,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+  },
+  tabDanceIconWrap: {
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabDanceIcon: {
+    width: 44,
+    height: 44,
   },
 });

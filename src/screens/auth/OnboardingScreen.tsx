@@ -82,8 +82,8 @@ const Step1Profile: React.FC<{ next: () => void }> = ({ next }) => {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.stepHeader}>
-          <Text style={[styles.stepTitle, { color: colors.text }]}>Profilini Oluştur</Text>
-          <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>Seni dans pistinde nasıl tanıyalım?</Text>
+          <Text style={[styles.stepTitle, { color: '#FFFFFF' }]}>Profilini Oluştur</Text>
+          <Text style={[styles.stepSubtitle, { color: '#FFFFFF' }]}>Seni dans pistinde nasıl tanıyalım?</Text>
         </View>
 
         <View style={styles.avatarSection}>
@@ -218,7 +218,7 @@ const Step2Permissions: React.FC<{ next: () => void }> = ({ next }) => {
         />
       </View>
 
-      <Text style={[styles.stepTitle, { color: colors.text, textAlign: 'center', marginTop: spacing.xxxl }]}>Deneyimi Tamamla</Text>
+      <Text style={[styles.stepTitle, { color: '#FFFFFF', textAlign: 'center', marginTop: spacing.xxxl }]}>Deneyimi Tamamla</Text>
       <Text style={[styles.stepSubtitle, { color: colors.textSecondary, textAlign: 'center' }]}>
         Sana en uygun etkinlikleri bulmamız ve seni haberdar etmemiz için izin ver.
       </Text>
@@ -273,7 +273,7 @@ const Step3Preferences: React.FC<{ onFinish: () => void }> = ({ onFinish }) => {
 
   return (
     <ScrollView contentContainerStyle={styles.stepContainer} showsVerticalScrollIndicator={false}>
-      <Text style={[styles.stepTitle, { color: colors.text }]}>
+      <Text style={[styles.stepTitle, { color: '#FFFFFF' }]}>
         Hangi danslar seni{' '}
         <Text style={{ color: colors.primary }}>harekete geçirir?</Text>
       </Text>

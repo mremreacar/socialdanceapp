@@ -131,7 +131,7 @@ export const darkTheme: ThemeColors = {
   surfaceSecondary: palette.zinc800,
 
   text: palette.white,
-  textSecondary: palette.zinc400,
+  textSecondary: '#FFFFFF',
   textTertiary: palette.zinc500,
   textInverse: palette.zinc900,
 

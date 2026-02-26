@@ -41,10 +41,23 @@ export const SchoolsScreen: React.FC = () => {
   return (
     <Screen>
       <CollapsingHeaderScrollView
-        headerProps={{ title: 'Dans Okulları', showBack: false, showMenu: true, onMenuPress: openDrawer }}
+        headerProps={{
+          title: 'Dans Okulları',
+          showLogo: false,
+          showBack: false,
+          showMenu: true,
+          onMenuPress: openDrawer,
+          showNotification: true,
+          onNotificationPress: () => (navigation.getParent() as any)?.navigate('Notifications'),
+        }}
         headerExtra={
           <View>
-            <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Okul veya konum ara" />
+            <SearchBar
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Okul veya konum ara"
+              backgroundColor="#482347"
+            />
             <View style={{ marginTop: spacing.sm }}>
               <TabSwitch
                 tabs={[

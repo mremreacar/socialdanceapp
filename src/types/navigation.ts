@@ -30,6 +30,7 @@ export type MainStackParamList = {
   ProductDetail: { id: string };
   Settings: undefined;
   EditProfile: undefined;
+  Notifications: undefined;
 };
 
 export type DrawerParamList = {

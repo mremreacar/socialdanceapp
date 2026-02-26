@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
@@ -33,12 +33,17 @@ export const ChatDetailScreen: React.FC<Props> = ({ route }) => {
         rightIcon="phone"
         onRightPress={() => {}}
       />
-
-      <FlatList
-        data={messages}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.sm }}
-        renderItem={({ item }) => (
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <FlatList
+          data={messages}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.sm, flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => (
           <View
             style={[
               styles.bubble,
@@ -55,20 +60,23 @@ export const ChatDetailScreen: React.FC<Props> = ({ route }) => {
             <Text style={[typography.label, { color: item.isMe ? 'rgba(255,255,255,0.7)' : colors.textTertiary, marginTop: 4 }]}>{item.time}</Text>
           </View>
         )}
-      />
-
-      <View style={[styles.inputRow, { backgroundColor: colors.surface, borderTopColor: colors.borderLight, padding: spacing.md }]}>
-        <TextInput
-          value={input}
-          onChangeText={setInput}
-          placeholder="Mesaj yaz..."
-          placeholderTextColor={colors.inputPlaceholder}
-          style={[styles.input, { backgroundColor: colors.inputBg, borderRadius: radius.full, color: colors.text }]}
         />
-        <TouchableOpacity onPress={send} style={[styles.sendBtn, { backgroundColor: colors.primary }]}>
-          <Icon name="send" size={20} color="#FFF" />
-        </TouchableOpacity>
-      </View>
+
+        <View style={[styles.inputRow, { backgroundColor: colors.background, borderTopColor: colors.borderLight, padding: spacing.md }]}>
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            placeholder="Mesaj yaz..."
+            placeholderTextColor={colors.inputPlaceholder}
+            style={[styles.input, { backgroundColor: '#482347', borderRadius: radius.full, color: '#FFF' }]}
+            returnKeyType="send"
+            onSubmitEditing={send}
+          />
+          <TouchableOpacity onPress={send} style={[styles.sendBtn, { backgroundColor: colors.primary }]}>
+            <Icon name="send" size={20} color="#FFF" />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </Screen>
   );
 };
