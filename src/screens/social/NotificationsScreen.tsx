@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
 import { Header } from '../../components/layout/Header';
 import { Icon } from '../../components/ui/Icon';
+import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { MainStackParamList } from '../../types/navigation';
 
 type NotificationItem = {
@@ -71,16 +72,17 @@ export const NotificationsScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const { colors, spacing, radius, typography } = useTheme();
   const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
+  const [deleteAllModalVisible, setDeleteAllModalVisible] = useState(false);
 
   const markAllRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
-  const deleteAll = () => {
-    Alert.alert('Tümünü sil', 'Tüm bildirimler silinecek. Emin misin?', [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => setNotifications([]) },
-    ]);
+  const deleteAll = () => setDeleteAllModalVisible(true);
+
+  const confirmDeleteAll = () => {
+    setNotifications([]);
+    setDeleteAllModalVisible(false);
   };
 
   const deleteOne = (id: string, e: any) => {
@@ -108,6 +110,15 @@ export const NotificationsScreen: React.FC = () => {
 
   return (
     <Screen>
+      <ConfirmModal
+        visible={deleteAllModalVisible}
+        title="Tümünü sil"
+        message="Tüm bildirimler silinecek. Emin misin?"
+        cancelLabel="İptal"
+        confirmLabel="Sil"
+        onCancel={() => setDeleteAllModalVisible(false)}
+        onConfirm={confirmDeleteAll}
+      />
       <Header title="Bildirimler" showBack rightComponent={headerRight} />
 
       <ScrollView

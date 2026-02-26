@@ -22,7 +22,7 @@ export const DanceQueenScreen: React.FC = () => {
   const { colors, spacing, typography } = useTheme();
   const [attendees, setAttendees] = useState(mockAttendees);
   const [seconds, setSeconds] = useState(300); // 5 min
-  const maxVotes = 10;
+  const maxVotes = 1; // 1 kullanıcı 1 kez oy verebilir
   const usedVotes = attendees.filter((a) => a.voted).length;
 
   useEffect(() => {

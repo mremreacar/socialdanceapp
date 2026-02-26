@@ -23,9 +23,10 @@ export type MainStackParamList = {
   EditEvent: undefined;
   EditClass: { draftData?: any };
   ChatList: undefined;
-  ChatDetail: { id: string; name: string; avatar: string };
+  ChatDetail: { id: string; name: string; avatar: string; isNewChat?: boolean };
   NewChat: undefined;
   Marketplace: undefined;
+  Cart: undefined;
   AddProduct: undefined;
   ProductDetail: { id: string };
   Settings: undefined;

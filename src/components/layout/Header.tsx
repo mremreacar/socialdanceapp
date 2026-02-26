@@ -11,6 +11,8 @@ interface HeaderProps {
   /** Başlık yerine logo göster (ana sayfalar için) */
   showLogo?: boolean;
   showBack?: boolean;
+  /** Geri butonuna özel davranış (verilmezse navigation.goBack()) */
+  onBackPress?: () => void;
   showMenu?: boolean;
   onMenuPress?: () => void;
   showNotification?: boolean;
@@ -26,6 +28,7 @@ export const Header: React.FC<HeaderProps> = ({
   title,
   showLogo = false,
   showBack = true,
+  onBackPress,
   showMenu = false,
   onMenuPress,
   showNotification = false,
@@ -70,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
         )}
         {showBack && (
           <TouchableOpacity
-            onPress={() => navigation.goBack()}
+            onPress={onBackPress ?? (() => navigation.goBack())}
             style={[
               styles.iconButton,
               {

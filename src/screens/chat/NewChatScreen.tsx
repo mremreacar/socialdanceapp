@@ -25,7 +25,7 @@ export const NewChatScreen: React.FC = () => {
     <Screen>
       <Header title="Yeni Sohbet" showBack />
       <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-        <SearchBar value={search} onChangeText={setSearch} placeholder="Kişi ara..." />
+        <SearchBar value={search} onChangeText={setSearch} placeholder="Kişi ara..." backgroundColor="#482347" />
       </View>
       <FlatList
         data={filtered}

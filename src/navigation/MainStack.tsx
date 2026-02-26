@@ -12,6 +12,7 @@ import { ChatListScreen } from '../screens/chat/ChatListScreen';
 import { ChatDetailScreen } from '../screens/chat/ChatDetailScreen';
 import { NewChatScreen } from '../screens/chat/NewChatScreen';
 import { MarketplaceScreen } from '../screens/marketplace/MarketplaceScreen';
+import { CartScreen } from '../screens/marketplace/CartScreen';
 import { AddProductScreen } from '../screens/marketplace/AddProductScreen';
 import { ProductDetailScreen } from '../screens/marketplace/ProductDetailScreen';
 import { SettingsScreen } from '../screens/social/SettingsScreen';
@@ -34,6 +35,7 @@ export const MainStack: React.FC = () => {
       <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
       <Stack.Screen name="NewChat" component={NewChatScreen} />
       <Stack.Screen name="Marketplace" component={MarketplaceScreen} />
+      <Stack.Screen name="Cart" component={CartScreen} />
       <Stack.Screen name="AddProduct" component={AddProductScreen} />
       <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />

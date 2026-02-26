@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, Alert, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../theme';
 import { useProfile } from '../../context/ProfileContext';
@@ -9,6 +9,7 @@ import { Header } from '../../components/layout/Header';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
+import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 
 export const EditProfileScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -24,6 +25,7 @@ export const EditProfileScreen: React.FC = () => {
   const [telefon, setTelefon] = useState('');
   const [sehir, setSehir] = useState('İstanbul');
   const [favoriDans, setFavoriDans] = useState('Salsa, Bachata');
+  const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null);
 
   useEffect(() => {
     const parts = profile.displayName.trim().split(/\s+/);
@@ -40,22 +42,20 @@ export const EditProfileScreen: React.FC = () => {
       try {
         ImagePicker = await import('expo-image-picker');
       } catch {
-        Alert.alert(
-          'Galeri kullanılamıyor',
-          'Expo Go kullanıyorsanız: Ayarlar > Expo Go > İzinler bölümünden Fotoğraflar iznini açın. Native build için "npx expo run:ios" veya "npx expo run:android" kullanın.',
-          [{ text: 'Tamam' }]
-        );
+        setAlertModal({
+          title: 'Galeri kullanılamıyor',
+          message: 'Expo Go kullanıyorsanız: Ayarlar > Expo Go > İzinler bölümünden Fotoğraflar iznini açın. Native build için "npx expo run:ios" veya "npx expo run:android" kullanın.',
+        });
         return;
       }
       try {
         if (!ImagePicker?.requestMediaLibraryPermissionsAsync) return;
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert(
-            'Galeri izni gerekli',
-            'Profil fotoğrafı için Ayarlar > Bu uygulama > İzinler bölümünden Fotoğraflar iznini verin.',
-            [{ text: 'Tamam' }]
-          );
+          setAlertModal({
+            title: 'Galeri izni gerekli',
+            message: 'Profil fotoğrafı için Ayarlar > Bu uygulama > İzinler bölümünden Fotoğraflar iznini verin.',
+          });
           return;
         }
         if (!ImagePicker?.launchImageLibraryAsync) return;
@@ -72,13 +72,12 @@ export const EditProfileScreen: React.FC = () => {
         const message = String(err instanceof Error ? err.message : err);
         if (/cancel|Cancel|User cancelled/i.test(message)) return;
         const isNativeError = /ExponentImagePicker|native module|runtime not ready|not found/i.test(message);
-        Alert.alert(
-          isNativeError ? 'Galeri bu ortamda çalışmıyor' : 'Hata',
-          isNativeError
+        setAlertModal({
+          title: isNativeError ? 'Galeri bu ortamda çalışmıyor' : 'Hata',
+          message: isNativeError
             ? 'Expo Go kullanıyorsanız: Ayarlar > Expo Go > İzinler > Fotoğraflar açın. Native build için "npx expo run:ios" veya "npx expo run:android" kullanın.'
             : 'Fotoğraf seçilirken bir sorun oluştu. Lütfen tekrar deneyin.',
-          [{ text: 'Tamam' }]
-        );
+        });
       }
     }, 0);
   };
@@ -97,6 +96,15 @@ export const EditProfileScreen: React.FC = () => {
 
   return (
     <Screen>
+      <ConfirmModal
+        visible={!!alertModal}
+        title={alertModal?.title ?? ''}
+        message={alertModal?.message ?? ''}
+        singleButton
+        confirmLabel="Tamam"
+        onCancel={() => setAlertModal(null)}
+        onConfirm={() => setAlertModal(null)}
+      />
       <Header title="Profili düzenle" showBack />
       <KeyboardAvoidingView
         style={{ flex: 1 }}

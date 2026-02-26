@@ -14,6 +14,8 @@ interface ConfirmModalProps {
   visible: boolean;
   title: string;
   message: string;
+  /** Tek buton (örn. Tamam) gösterir; takibi bırak tarzı aynı görünüm */
+  singleButton?: boolean;
   cancelLabel?: string;
   confirmLabel?: string;
   onCancel: () => void;
@@ -24,12 +26,18 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   visible,
   title,
   message,
+  singleButton = false,
   cancelLabel = 'İptal',
   confirmLabel = 'Eminim',
   onCancel,
   onConfirm,
 }) => {
-  const { typography, spacing, radius } = useTheme();
+  const { typography, radius } = useTheme();
+
+  const handleConfirm = () => {
+    onConfirm();
+    if (singleButton) onCancel();
+  };
 
   return (
     <Modal
@@ -43,16 +51,22 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <Text style={[typography.h4, styles.title]}>{title}</Text>
           <Text style={[typography.bodySmall, styles.message]}>{message}</Text>
           <View style={styles.actions}>
+            {!singleButton && (
+              <TouchableOpacity
+                onPress={onCancel}
+                style={[styles.cancelBtn, { borderColor: CANCEL_BORDER, borderRadius: radius.lg }]}
+                activeOpacity={0.8}
+              >
+                <Text style={[typography.bodySmallBold, { color: CANCEL_TEXT }]}>{cancelLabel}</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
-              onPress={onCancel}
-              style={[styles.cancelBtn, { borderColor: CANCEL_BORDER, borderRadius: radius.lg }]}
-              activeOpacity={0.8}
-            >
-              <Text style={[typography.bodySmallBold, { color: CANCEL_TEXT }]}>{cancelLabel}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onConfirm}
-              style={[styles.confirmBtn, { backgroundColor: CONFIRM_BG, borderRadius: radius.lg }]}
+              onPress={singleButton ? handleConfirm : onConfirm}
+              style={[
+                styles.confirmBtn,
+                { backgroundColor: CONFIRM_BG, borderRadius: radius.lg },
+                singleButton ? styles.singleBtn : undefined,
+              ]}
               activeOpacity={0.8}
             >
               <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{confirmLabel}</Text>
@@ -106,5 +120,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  singleBtn: {
+    flex: 1,
   },
 });

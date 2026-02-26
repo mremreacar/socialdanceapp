@@ -7,7 +7,6 @@ import { Screen } from '../../components/layout/Screen';
 import { Header } from '../../components/layout/Header';
 import { SearchBar } from '../../components/domain/SearchBar';
 import { FilterBar } from '../../components/domain/FilterBar';
-import { Icon } from '../../components/ui/Icon';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../../types/navigation';
 
@@ -38,11 +37,12 @@ export const MarketplaceScreen: React.FC = () => {
       <Header
         title="Marketplace"
         showBack
+        onBackPress={() => navigation.goBack()}
         rightIcon="plus"
         onRightPress={() => navigation.navigate('AddProduct')}
       />
       <View style={{ paddingHorizontal: spacing.lg }}>
-        <SearchBar value={search} onChangeText={setSearch} placeholder="Ürün ara..." />
+        <SearchBar value={search} onChangeText={setSearch} placeholder="Ürün ara..." backgroundColor="#482347" />
         <FilterBar filters={categories} activeFilter={activeCategory} onFilterChange={setActiveCategory} />
       </View>
 
@@ -72,15 +72,6 @@ export const MarketplaceScreen: React.FC = () => {
           </TouchableOpacity>
         )}
       />
-
-      <View style={[styles.fab, { right: spacing.lg, bottom: 100 }]}>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('AddProduct')}
-          style={[styles.fabBtn, { backgroundColor: colors.primary }]}
-        >
-          <Icon name="plus" size={28} color="#FFF" />
-        </TouchableOpacity>
-      </View>
     </Screen>
   );
 };
@@ -91,6 +82,4 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 140,
   },
-  fab: { position: 'absolute', zIndex: 10 },
-  fabBtn: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
 });

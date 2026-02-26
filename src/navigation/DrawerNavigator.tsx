@@ -25,6 +25,7 @@ const menuItems: MenuItem[] = [
   { label: 'Etkinlikler', icon: 'calendar-outline', route: 'Explore' },
   { label: 'Profil', icon: 'account-outline', route: 'Profile' },
   { label: 'Marketplace', icon: 'shopping-outline', route: 'Marketplace' },
+  { label: 'Sepet', icon: 'cart-outline', route: 'Cart' },
   { label: 'Mesajlar', icon: 'message-outline', route: 'ChatList' },
 ];
 

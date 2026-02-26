@@ -7,6 +7,7 @@ import { useFonts } from '@expo-google-fonts/poppins/useFonts';
 import { Poppins_400Regular, Poppins_700Bold } from '@expo-google-fonts/poppins';
 import { ThemeProvider } from './src/theme';
 import { ProfileProvider } from './src/context/ProfileContext';
+import { CartProvider } from './src/context/CartContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
 export default function App() {
@@ -34,9 +35,11 @@ export default function App() {
       <SafeAreaProvider>
         <ThemeProvider>
           <ProfileProvider>
-            <NavigationContainer>
-              <RootNavigator initialRouteName="Auth" />
-            </NavigationContainer>
+            <CartProvider>
+              <NavigationContainer>
+                <RootNavigator initialRouteName="Auth" />
+              </NavigationContainer>
+            </CartProvider>
           </ProfileProvider>
         </ThemeProvider>
       </SafeAreaProvider>

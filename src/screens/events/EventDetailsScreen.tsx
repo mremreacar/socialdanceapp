@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import { Avatar } from '../../components/ui/Avatar';
 import { ProgressBar } from '../../components/ui/ProgressBar';
+import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { mockEvents } from '../../constants/mockData';
 import { MainStackParamList } from '../../types/navigation';
 import { scheduleEventReminder } from '../../services/notifications';
@@ -19,14 +20,30 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const event = mockEvents.find((e) => e.id === route.params.id) || mockEvents[0];
   const [isFavorite, setIsFavorite] = useState(false);
   const [reminderScheduled, setReminderScheduled] = useState(false);
+  const [attending, setAttending] = useState(event.attendees ?? 12);
+  const [hasJoined, setHasJoined] = useState(false);
+  const [joinModalVisible, setJoinModalVisible] = useState(false);
+  const [leaveModalVisible, setLeaveModalVisible] = useState(false);
   const capacity = 50;
-  const attending = event.attendees || 12;
 
   const handleJoin = async () => {
+    setHasJoined(true);
+    setAttending((prev) => prev + 1);
     if (event.rawDate && !reminderScheduled) {
       const id = await scheduleEventReminder(event.title, event.rawDate);
       if (id) setReminderScheduled(true);
     }
+    setJoinModalVisible(true);
+  };
+
+  const handleLeave = () => {
+    setLeaveModalVisible(true);
+  };
+
+  const confirmLeave = () => {
+    setHasJoined(false);
+    setAttending((prev) => Math.max(0, prev - 1));
+    setLeaveModalVisible(false);
   };
 
   const handleShare = () => {
@@ -36,13 +53,40 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }).catch(() => {});
   };
 
+  const shareButton = (
+    <TouchableOpacity
+      onPress={handleShare}
+      style={[styles.headerShareBtn, { borderRadius: radius.full, borderColor: '#9CA3AF' }]}
+      activeOpacity={0.7}
+    >
+      <Icon name="share-variant" size={22} color="#9CA3AF" />
+    </TouchableOpacity>
+  );
+
   return (
     <Screen>
+      <ConfirmModal
+        visible={joinModalVisible}
+        title="Teşekkürler!"
+        message="Katıldığınızı belirttiğiniz için teşekkürler. Etkinlikte görüşmek üzere!"
+        singleButton
+        confirmLabel="Tamam"
+        onCancel={() => setJoinModalVisible(false)}
+        onConfirm={() => setJoinModalVisible(false)}
+      />
+      <ConfirmModal
+        visible={leaveModalVisible}
+        title="Vazgeçtiniz"
+        message="Katılmaktan vazgeçtiğiniz için üzgünüz. İstediğiniz zaman tekrar katılabilirsiniz."
+        singleButton
+        confirmLabel="Tamam"
+        onCancel={() => setLeaveModalVisible(false)}
+        onConfirm={confirmLeave}
+      />
       <Header
         title={event.title}
         showBack
-        rightIcon="share-variant"
-        onRightPress={handleShare}
+        rightComponent={shareButton}
       />
       <ScrollView
         style={{ flex: 1 }}
@@ -152,7 +196,12 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
           <View style={{ flex: 1, minHeight: 24 }} />
           <View style={[styles.bottomBar, { backgroundColor: colors.headerBg, paddingHorizontal: spacing.lg, paddingVertical: spacing.lg }]}>
-            <Button title="Katıl" onPress={handleJoin} fullWidth style={{ borderRadius: 50 }} />
+            <Button
+              title={hasJoined ? 'Katılmaktan vazgeç' : 'Katıl'}
+              onPress={hasJoined ? handleLeave : handleJoin}
+              fullWidth
+              style={{ borderRadius: 50 }}
+            />
           </View>
         </View>
       </ScrollView>
@@ -179,4 +228,12 @@ const styles = StyleSheet.create({
   avatars: { flexDirection: 'row', alignItems: 'center' },
   dqBanner: { flexDirection: 'row', alignItems: 'center' },
   bottomBar: { flexDirection: 'row', alignItems: 'center' },
+  headerShareBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0.5,
+    marginRight: 12,
+  },
 });

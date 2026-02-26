@@ -16,7 +16,8 @@ const mockMessages = [
 
 export const ChatDetailScreen: React.FC<Props> = ({ route }) => {
   const { colors, spacing, radius, typography } = useTheme();
-  const [messages, setMessages] = useState(mockMessages);
+  const isNewChat = route.params.isNewChat ?? false;
+  const [messages, setMessages] = useState(isNewChat ? [] : mockMessages);
   const [input, setInput] = useState('');
 
   const send = () => {

@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, KeyboardAvoidingView } from 'react-native';
-import Constants from 'expo-constants';
+import React, { useState, useEffect } from 'react';
+import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Platform, KeyboardAvoidingView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
@@ -9,11 +8,12 @@ import { Input } from '../../components/ui/Input';
 import { Icon } from '../../components/ui/Icon';
 import { Toggle } from '../../components/ui/Toggle';
 import { Chip } from '../../components/ui/Chip';
+import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { AuthStackParamList } from '../../types/navigation';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Onboarding'>;
 
-const Step1Profile: React.FC<{ next: () => void }> = ({ next }) => {
+const Step1Profile: React.FC<{ next: () => void; onShowAlert: (title: string, message: string) => void }> = ({ next, onShowAlert }) => {
   const { colors, spacing, radius, shadows } = useTheme();
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const scrollRef = React.useRef<ScrollView>(null);
@@ -24,10 +24,9 @@ const Step1Profile: React.FC<{ next: () => void }> = ({ next }) => {
       try {
         ImagePicker = await import('expo-image-picker');
       } catch {
-        Alert.alert(
+        onShowAlert(
           'Galeri kullanılamıyor',
-          'Expo Go kullanıyorsanız: Ayarlar > Expo Go > İzinler bölümünden Fotoğraflar iznini açın. Hâlâ çalışmıyorsa bilgisayarda "npx expo run:ios" veya "npx expo run:android" çalıştırıp uygulamayı yeniden yükleyin.',
-          [{ text: 'Tamam' }]
+          'Expo Go kullanıyorsanız: Ayarlar > Expo Go > İzinler bölümünden Fotoğraflar iznini açın. Hâlâ çalışmıyorsa bilgisayarda "npx expo run:ios" veya "npx expo run:android" çalıştırıp uygulamayı yeniden yükleyin.'
         );
         return;
       }
@@ -35,10 +34,9 @@ const Step1Profile: React.FC<{ next: () => void }> = ({ next }) => {
         if (!ImagePicker?.requestMediaLibraryPermissionsAsync) return;
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert(
+          onShowAlert(
             'Galeri izni gerekli',
-            'Profil fotoğrafı için Ayarlar > Bu uygulama > İzinler (veya Fotoğraflar) bölümünden izin verin. Expo Go kullanıyorsanız "Expo Go" uygulamasının izinlerine bakın.',
-            [{ text: 'Tamam' }]
+            'Profil fotoğrafı için Ayarlar > Bu uygulama > İzinler (veya Fotoğraflar) bölümünden izin verin. Expo Go kullanıyorsanız "Expo Go" uygulamasının izinlerine bakın.'
           );
           return;
         }
@@ -57,12 +55,11 @@ const Step1Profile: React.FC<{ next: () => void }> = ({ next }) => {
         if (/cancel|Cancel|User cancelled/i.test(message)) return;
         const isNativeError =
           /ExponentImagePicker|native module|runtime not ready|not found/i.test(message);
-        Alert.alert(
+        onShowAlert(
           isNativeError ? 'Galeri bu ortamda çalışmıyor' : 'Hata',
           isNativeError
             ? 'Expo Go kullanıyorsanız: Ayarlar > Expo Go > İzinler > Fotoğraflar açın. Yoksa bilgisayarda "npx expo run:ios" veya "npx expo run:android" ile uygulamayı derleyip telefona yükleyin; izinler o build\'de görünür.'
-            : 'Fotoğraf seçilirken bir sorun oluştu. Lütfen tekrar deneyin.',
-          [{ text: 'Tamam' }]
+            : 'Fotoğraf seçilirken bir sorun oluştu. Lütfen tekrar deneyin.'
         );
       }
     }, 0);
@@ -118,29 +115,26 @@ const Step1Profile: React.FC<{ next: () => void }> = ({ next }) => {
   );
 };
 
-// Konum/bildirim native modülleri Expo Go'da yok; sadece kullanıcı açmak istediğinde dene, açılışta hiç yükleme
-const isStandalone = Constants.appOwnership === 'standalone';
-
-const Step2Permissions: React.FC<{ next: () => void }> = ({ next }) => {
+const Step2Permissions: React.FC<{ next: () => void; onShowAlert: (title: string, message: string) => void }> = ({ next, onShowAlert }) => {
   const { colors, spacing, radius } = useTheme();
   const [locationEnabled, setLocationEnabled] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
 
-  // İzin durumunu sadece standalone build'de ve kullanıcı sayfadayken (toggle'a basınca) yüklüyoruz.
-  // Açılışta import yok → Expo Go'da "Cannot find native module" hatası oluşmaz.
+  // Sayfa açıldığında konum ve bildirim izinlerini otomatik iste (sırayla)
+  useEffect(() => {
+    const t1 = setTimeout(() => requestLocationPermission(true), 400);
+    const t2 = setTimeout(() => requestNotificationPermission(true), 1200);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, []);
+
   const requestLocationPermission = async (enable: boolean) => {
     if (!enable) {
       setLocationEnabled(false);
-      return;
-    }
-    if (!isStandalone) {
-      Alert.alert(
-        'Expo Go\'da kullanılamaz',
-        'Konum izni Expo Go içinde desteklenmiyor. Gerçek izin penceresini kullanmak için: bilgisayarda "npx expo run:ios" veya "npx expo run:android" çalıştırıp uygulamayı cihaza yükleyin.',
-        [{ text: 'Tamam' }]
-      );
       return;
     }
     setLocationLoading(true);
@@ -156,15 +150,14 @@ const Step2Permissions: React.FC<{ next: () => void }> = ({ next }) => {
           // Konum alınamazsa bile izin kullanılmış sayılır
         }
       } else {
-        Alert.alert(
+        onShowAlert(
           'Konum izni',
-          'Çevrenizdeki etkinlikleri gösterebilmek için konum erişimine izin vermeniz gerekir. İsterseniz ayarlardan sonra açabilirsiniz.',
-          [{ text: 'Tamam' }]
+          'Çevrenizdeki etkinlikleri gösterebilmek için konum erişimine izin vermeniz gerekir. İsterseniz ayarlardan sonra açabilirsiniz.'
         );
       }
     } catch {
       setLocationEnabled(false);
-      Alert.alert('Hata', 'Konum izni alınamadı.', [{ text: 'Tamam' }]);
+      onShowAlert('Hata', 'Konum izni alınamadı.');
     } finally {
       setLocationLoading(false);
     }
@@ -173,14 +166,6 @@ const Step2Permissions: React.FC<{ next: () => void }> = ({ next }) => {
   const requestNotificationPermission = async (enable: boolean) => {
     if (!enable) {
       setNotificationsEnabled(false);
-      return;
-    }
-    if (!isStandalone) {
-      Alert.alert(
-        'Expo Go\'da kullanılamaz',
-        'Bildirim izni Expo Go içinde desteklenmiyor. Gerçek izin penceresini kullanmak için: bilgisayarda "npx expo run:ios" veya "npx expo run:android" çalıştırıp uygulamayı cihaza yükleyin.',
-        [{ text: 'Tamam' }]
-      );
       return;
     }
     setNotificationsLoading(true);
@@ -195,15 +180,14 @@ const Step2Permissions: React.FC<{ next: () => void }> = ({ next }) => {
         const { scheduleWelcomeNotification } = await import('../../services/notifications');
         scheduleWelcomeNotification().catch(() => {});
       } else {
-        Alert.alert(
+        onShowAlert(
           'Bildirim izni',
-          'Davet ve duyurulardan haberdar olmak için bildirimlere izin vermeniz gerekir. İsterseniz ayarlardan sonra açabilirsiniz.',
-          [{ text: 'Tamam' }]
+          'Davet ve duyurulardan haberdar olmak için bildirimlere izin vermeniz gerekir. İsterseniz ayarlardan sonra açabilirsiniz.'
         );
       }
     } catch {
       setNotificationsEnabled(false);
-      Alert.alert('Hata', 'Bildirim izni alınamadı.', [{ text: 'Tamam' }]);
+      onShowAlert('Hata', 'Bildirim izni alınamadı.');
     } finally {
       setNotificationsLoading(false);
     }
@@ -307,6 +291,7 @@ const Step3Preferences: React.FC<{ onFinish: () => void }> = ({ onFinish }) => {
 export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
   const { colors, spacing, radius } = useTheme();
   const [step, setStep] = useState(1);
+  const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null);
 
   const handleFinish = async () => {
     const { storage } = await import('../../services/storage');
@@ -316,6 +301,15 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <Screen>
+      <ConfirmModal
+        visible={!!alertModal}
+        title={alertModal?.title ?? ''}
+        message={alertModal?.message ?? ''}
+        singleButton
+        confirmLabel="Tamam"
+        onCancel={() => setAlertModal(null)}
+        onConfirm={() => setAlertModal(null)}
+      />
       <View style={[styles.header, { paddingHorizontal: spacing.lg }]}>
         <TouchableOpacity
           onPress={() => (step > 1 ? setStep(step - 1) : navigation.goBack())}
@@ -346,8 +340,8 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       <View style={[styles.stepWrapper, { paddingHorizontal: spacing.lg }]}>
-        {step === 1 && <Step1Profile next={() => setStep(2)} />}
-        {step === 2 && <Step2Permissions next={() => setStep(3)} />}
+        {step === 1 && <Step1Profile next={() => setStep(2)} onShowAlert={(title, message) => setAlertModal({ title, message })} />}
+        {step === 2 && <Step2Permissions next={() => setStep(3)} onShowAlert={(title, message) => setAlertModal({ title, message })} />}
         {step === 3 && <Step3Preferences onFinish={handleFinish} />}
       </View>
     </Screen>
