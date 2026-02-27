@@ -4,7 +4,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { useFonts } from '@expo-google-fonts/poppins/useFonts';
-import { Poppins_400Regular, Poppins_700Bold } from '@expo-google-fonts/poppins';
+import { Poppins_300Light, Poppins_400Regular, Poppins_700Bold } from '@expo-google-fonts/poppins';
 import { ThemeProvider } from './src/theme';
 import { ProfileProvider } from './src/context/ProfileContext';
 import { CartProvider } from './src/context/CartContext';
@@ -13,6 +13,7 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 export default function App() {
   const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [fontsLoaded] = useFonts({
+    Poppins_300Light,
     Poppins_400Regular,
     Poppins_700Bold,
   });

@@ -90,13 +90,15 @@ export const Header: React.FC<HeaderProps> = ({
       </View>
 
       {showLogo ? (
-        <View style={styles.headerLogoWrap}>
+        <View style={[styles.center, styles.headerLogoWrap]}>
           <Image source={headerLogo} style={styles.headerLogo} resizeMode="contain" />
         </View>
       ) : (
-        <Text style={[typography.h4, { color: colors.headerText ?? colors.text }]} numberOfLines={1}>
-          {title}
-        </Text>
+        <View style={[styles.center, styles.titleWrap]}>
+          <Text style={[typography.h4, { color: colors.headerText ?? colors.text }, styles.titleText]} numberOfLines={2} ellipsizeMode="tail">
+            {title}
+          </Text>
+        </View>
       )}
 
       <View style={styles.right}>
@@ -150,6 +152,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     width: 80,
+  },
+  center: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  titleWrap: {
+    alignSelf: 'stretch',
+  },
+  titleText: {
+    width: '100%',
+    textAlign: 'center',
+    fontSize: 15,
+    lineHeight: 22,
   },
   right: {
     flexDirection: 'row',

@@ -1,6 +1,7 @@
 import { TextStyle } from 'react-native';
 
 export const fontFamily = {
+  light: 'Poppins_300Light',
   regular: 'Poppins_400Regular',
   bold: 'Poppins_700Bold',
 } as const;
@@ -36,6 +37,12 @@ export const typography = {
     fontWeight: '400' as TextStyle['fontWeight'],
     lineHeight: 24,
   },
+  bodyLight: {
+    fontFamily: 'Poppins_300Light',
+    fontSize: 16,
+    fontWeight: '300' as TextStyle['fontWeight'],
+    lineHeight: 24,
+  },
   bodyMedium: {
     fontFamily: 'Poppins_400Regular',
     fontSize: 16,
@@ -52,6 +59,12 @@ export const typography = {
     fontFamily: 'Poppins_400Regular',
     fontSize: 14,
     fontWeight: '400' as TextStyle['fontWeight'],
+    lineHeight: 20,
+  },
+  bodySmallLight: {
+    fontFamily: 'Poppins_300Light',
+    fontSize: 14,
+    fontWeight: '300' as TextStyle['fontWeight'],
     lineHeight: 20,
   },
   bodySmallMedium: {

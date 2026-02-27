@@ -7,6 +7,7 @@ import { Screen } from '../../components/layout/Screen';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Icon } from '../../components/ui/Icon';
+import { GoogleColorIcon } from '../../components/ui/GoogleColorIcon';
 import { AuthStackParamList } from '../../types/navigation';
 import { storage } from '../../services/storage';
 
@@ -69,16 +70,16 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
             <TouchableOpacity
               onPress={goToCreateProfile}
               activeOpacity={0.8}
-              style={[styles.socialButton, { backgroundColor: '#1E1E1E', borderWidth: 1, borderColor: '#384253', borderRadius: radius.xl, ...shadows.sm }]}
+              style={[styles.socialButton, { backgroundColor: '#1E1E1E', borderWidth: 0.1, borderColor: '#FFFFFF', borderRadius: radius.xl, ...shadows.sm }]}
             >
-              <Icon name="google" size={22} color="#FFFFFF" style={styles.socialIconLeft} />
+              <GoogleColorIcon size={22} style={styles.socialIconLeft} />
               <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Google ile Devam Et</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={goToCreateProfile}
               activeOpacity={0.8}
-              style={[styles.socialButton, { backgroundColor: '#1E1E1E', borderWidth: 1, borderColor: '#384253', borderRadius: radius.xl, ...shadows.sm }]}
+              style={[styles.socialButton, { backgroundColor: '#1E1E1E', borderWidth: 0.1, borderColor: '#FFFFFF', borderRadius: radius.xl, ...shadows.sm }]}
             >
               <Icon name="apple" size={22} color="#FFFFFF" style={styles.socialIconLeft} />
               <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Apple ile Devam Et</Text>
@@ -191,8 +192,7 @@ const styles = StyleSheet.create({
     left: 24,
   },
   socialIconLeft: {
-    position: 'absolute',
-    left: 24,
+    marginRight: 8,
   },
   gradientButton: {
     height: 56,
