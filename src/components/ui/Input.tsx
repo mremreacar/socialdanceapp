@@ -121,7 +121,13 @@ export const Input: React.FC<InputProps> = ({
             styles.input,
             typography.body,
             styles.inputText,
-            { color: colors.text, flex: 1 },
+            {
+              color: colors.text,
+              flex: 1,
+              // iOS'ta yazmaya başlanınca metnin yukarı fırlamaması için
+              // tek satırlı inputlarda hafif bir paddingTop veriyoruz
+              ...(Platform.OS === 'ios' && !isMultiline ? { paddingTop: 6 } : null),
+            },
             isMultiline && styles.inputMultiline,
             style,
           ]}

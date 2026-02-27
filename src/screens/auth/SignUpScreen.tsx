@@ -17,16 +17,41 @@ const requirements = [
   { key: 'digitOrSymbol', label: 'En az 1 rakam veya sembol', check: (p: string) => /[^a-zA-Z]/.test(p) },
 ] as const;
 
+const inputBorderColor = 'rgba(255,255,255,0.25)';
+
 export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const { colors, spacing, typography } = useTheme();
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordRepeat, setShowPasswordRepeat] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordRepeat, setPasswordRepeat] = useState('');
 
   const requirementStatus = useMemo(() => requirements.map((r) => ({ ...r, met: r.check(password) })), [password]);
 
+  const isEmailValid = useMemo(
+    () => /^\S+@\S+\.\S+$/.test(email.trim()),
+    [email]
+  );
+
+  const allRequirementsMet = useMemo(
+    () => requirementStatus.every((r) => r.met),
+    [requirementStatus]
+  );
+
+  const isFormValid =
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
+    isEmailValid &&
+    allRequirementsMet &&
+    passwordRepeat.length > 0 &&
+    passwordRepeat === password;
+
   const handleSignUp = () => {
-    navigation.replace('Onboarding');
+    if (!isFormValid) return;
+    navigation.replace('Onboarding', { startFromStep: 4 });
   };
 
   return (
@@ -46,8 +71,37 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
             </Text>
 
             <View style={[styles.form]}>
-              <Input placeholder="Ad" leftIcon="account-outline" />
-              <Input placeholder="E-posta Adresi" keyboardType="email-address" autoCapitalize="none" leftIcon="email-outline" containerStyle={{ marginTop: spacing.md }} />
+              <Input
+                placeholder="Ad"
+                leftIcon="account-outline"
+                value={firstName}
+                onChangeText={setFirstName}
+                backgroundColor="transparent"
+                borderColor={inputBorderColor}
+                style={{ color: '#FFFFFF' }}
+              />
+              <Input
+                placeholder="Soyad"
+                leftIcon="account-outline"
+                containerStyle={{ marginTop: spacing.md }}
+                value={lastName}
+                onChangeText={setLastName}
+                backgroundColor="transparent"
+                borderColor={inputBorderColor}
+                style={{ color: '#FFFFFF' }}
+              />
+              <Input
+                placeholder="E-posta Adresi"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                leftIcon="email-outline"
+                containerStyle={{ marginTop: spacing.md }}
+                value={email}
+                onChangeText={setEmail}
+                backgroundColor="transparent"
+                borderColor={inputBorderColor}
+                style={{ color: '#FFFFFF' }}
+              />
               <Input
                 placeholder="Şifre"
                 value={password}
@@ -57,14 +111,22 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
                 rightIcon={showPassword ? 'eye-off-outline' : 'eye-outline'}
                 onRightIconPress={() => setShowPassword((v) => !v)}
                 containerStyle={{ marginTop: spacing.md }}
+                backgroundColor="transparent"
+                borderColor={inputBorderColor}
+                style={{ color: '#FFFFFF' }}
               />
               <Input
                 placeholder="Şifre Tekrar"
+                value={passwordRepeat}
+                onChangeText={setPasswordRepeat}
                 secureTextEntry={!showPasswordRepeat}
                 leftIcon="lock-outline"
                 rightIcon={showPasswordRepeat ? 'eye-off-outline' : 'eye-outline'}
                 onRightIconPress={() => setShowPasswordRepeat((v) => !v)}
                 containerStyle={{ marginTop: spacing.md }}
+                backgroundColor="transparent"
+                borderColor={inputBorderColor}
+                style={{ color: '#FFFFFF' }}
               />
               <View style={[styles.requirementsBox, { backgroundColor: '#311831', borderRadius: 12, padding: spacing.lg, marginTop: spacing.lg }]}>
                 <Text style={[typography.label, { color: '#9CA3AF', marginBottom: spacing.sm }]}>GEREKSİNİMLER</Text>
@@ -75,7 +137,7 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
                   </View>
                 ))}
               </View>
-              <Button title="Kayıt Ol" onPress={handleSignUp} fullWidth style={{ marginTop: spacing.xl }} />
+              <Button title="Kayıt Ol" onPress={handleSignUp} fullWidth style={{ marginTop: spacing.xl }} disabled={!isFormValid} />
             </View>
 
             <View style={styles.loginRow}>

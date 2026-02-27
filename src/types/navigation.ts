@@ -3,7 +3,7 @@ import { NavigatorScreenParams } from '@react-navigation/native';
 export type AuthStackParamList = {
   Login: undefined;
   SignUp: undefined;
-  Onboarding: undefined;
+  Onboarding: { startFromStep?: number } | undefined;
 };
 
 export type MainTabsParamList = {

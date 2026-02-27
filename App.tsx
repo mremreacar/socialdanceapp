@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, ActivityIndicator, ImageBackground } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
@@ -11,6 +11,7 @@ import { CartProvider } from './src/context/CartContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
 export default function App() {
+  const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
     Poppins_700Bold,
@@ -22,11 +23,46 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  if (!fontsLoaded) {
+  useEffect(() => {
+    // En az 3 saniye splash kalsın, fontlar yüklenmeden asla kaybolmasın
+    const MIN_SPLASH_DURATION = 3000;
+    const start = Date.now();
+
+    let timeout: NodeJS.Timeout;
+
+    if (fontsLoaded) {
+      const elapsed = Date.now() - start;
+      const remaining = Math.max(MIN_SPLASH_DURATION - elapsed, 0);
+      timeout = setTimeout(() => {
+        setIsSplashVisible(false);
+      }, remaining);
+    }
+
+    return () => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    };
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded || isSplashVisible) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#231022' }}>
-        <ActivityIndicator size="large" color="#ee2bee" />
-      </View>
+      <ImageBackground
+        source={require('./assets/splash.png')}
+        style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+        resizeMode="cover"
+      >
+        {!fontsLoaded && (
+          <View
+            style={{
+              position: 'absolute',
+              bottom: 40,
+            }}
+          >
+            <ActivityIndicator size="large" color="#ffffff" />
+          </View>
+        )}
+      </ImageBackground>
     );
   }
 

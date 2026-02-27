@@ -30,11 +30,11 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={[styles.scrollContent, { backgroundColor: colors.background }]}
+          contentContainerStyle={[styles.scrollContent, { backgroundColor: colors.background, flexGrow: 1, justifyContent: 'center' }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.container, { backgroundColor: colors.background }]}>
+          <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
             <View style={styles.glowWrapper} pointerEvents="none">
               <View
                 style={[
@@ -51,7 +51,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
               />
             </View>
 
-            <View style={styles.logoSection}>
+            <View style={[styles.logoSection, { marginTop: 0 }]}>
             <View style={[styles.logoContainer, { backgroundColor: colors.surface, borderColor: colors.border, ...shadows.xxl }]}>
               <Image
                 source={require('../../../assets/login-logo.png')}
@@ -59,7 +59,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
                 resizeMode="contain"
               />
             </View>
-            <Text style={[typography.h1, { color: '#FFFFFF', marginTop: spacing.lg }]}>Socialdance</Text>
+            <Text style={[typography.h1, { color: '#FFFFFF', marginTop: spacing.lg, textAlign: 'center' }]}>Socialdance</Text>
             <Text style={[typography.bodySmall, { color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.xxxl }]}>
               Dans dünyasını keşfet, yeni partnerler bul ve en iyi etkinliklerde yerini al.
             </Text>
@@ -124,7 +124,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
             )}
           </View>
 
-          <Text style={[typography.label, { color: colors.textTertiary, textAlign: 'center', paddingHorizontal: spacing.xxxl, marginBottom: spacing.lg, fontSize: 9 }]}>
+          <Text style={[typography.label, { color: colors.textTertiary, textAlign: 'center', paddingHorizontal: spacing.xxxl, marginTop: spacing.xl, marginBottom: spacing.lg, fontSize: 9 }]}>
             Devam ederek Socialdance Kullanım Koşulları'nı ve Gizlilik Politikası'nı kabul etmiş olursunuz.
           </Text>
           </View>
@@ -141,8 +141,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flexGrow: 1,
-    justifyContent: 'space-between',
-    minHeight: '100%',
+    paddingVertical: 24,
   },
   glowWrapper: {
     position: 'absolute',
@@ -159,7 +158,6 @@ const styles = StyleSheet.create({
   },
   logoSection: {
     alignItems: 'center',
-    marginTop: 60,
   },
   logoContainer: {
     width: 150,
@@ -175,8 +173,8 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   buttonSection: {
-    flex: 1,
-    justifyContent: 'center',
+    width: '100%',
+    marginTop: 32,
     gap: 12,
   },
   socialButton: {

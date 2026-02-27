@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Platform, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, Platform, KeyboardAvoidingView, PanResponder } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
@@ -12,6 +12,155 @@ import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { AuthStackParamList } from '../../types/navigation';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Onboarding'>;
+
+const IntroStepWelcome: React.FC<{ next: () => void }> = ({ next }) => {
+  const { colors, spacing, typography, shadows } = useTheme();
+
+  return (
+    <View style={[styles.stepContainer, { paddingHorizontal: spacing.lg, justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={{ alignItems: 'center', width: '100%' }}>
+        <Image
+          source={require('../../../assets/social-dance-logo.png')}
+          style={styles.onboardingLogoStandalone}
+          resizeMode="contain"
+        />
+        <Text style={[typography.h1, { color: '#FFFFFF', textAlign: 'center', marginTop: spacing.lg }]}>
+          Hoş Geldiniz
+        </Text>
+        <Text
+          style={[
+            typography.body,
+            {
+              color: colors.textSecondary,
+              textAlign: 'center',
+              marginTop: spacing.sm,
+              marginHorizontal: spacing.xxxl,
+            },
+          ]}
+        >
+          Dans etmeyi seven insanları bir araya getiren sosyal dans topluluğuna ilk adımını attın.
+        </Text>
+      </View>
+
+      <View style={{ marginTop: spacing.xxxl, width: '100%' }}>
+        <Button title="Devam Et" onPress={next} fullWidth size="lg" iconRight="arrow-right" />
+      </View>
+    </View>
+  );
+};
+
+const IntroStepAbout: React.FC<{ next: () => void }> = ({ next }) => {
+  const { colors, spacing, typography, shadows } = useTheme();
+
+  return (
+    <View style={[styles.stepContainer, { paddingHorizontal: spacing.lg, justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={{ alignItems: 'center', width: '100%' }}>
+        <Image
+          source={require('../../../assets/social-dance-logo.png')}
+          style={styles.onboardingLogoStandalone}
+          resizeMode="contain"
+        />
+        <Text style={[typography.h1, { color: '#FFFFFF', textAlign: 'center', marginTop: spacing.lg }]}>
+          Size Socialdance&apos;i Tanıtayım
+        </Text>
+        <Text
+          style={[
+            typography.body,
+            {
+              color: colors.textSecondary,
+              textAlign: 'center',
+              marginTop: spacing.sm,
+              marginHorizontal: spacing.xl,
+              lineHeight: 22,
+            },
+          ]}
+        >
+          Dans etkinliklerini keşfet, yeni partnerler bul ve toplulukla bağlan. Seni en uygun etkinlikler ve insanlarla
+          bir araya getiriyoruz.
+        </Text>
+      </View>
+
+      <View style={{ marginTop: spacing.xxxl, width: '100%' }}>
+        <Button title="Giriş Adımlarına Geç" onPress={next} fullWidth size="lg" iconRight="arrow-right" />
+      </View>
+    </View>
+  );
+};
+
+const IntroStepLogin: React.FC<{ onSocialContinue: () => void; onEmailContinue: () => void }> = ({
+  onSocialContinue,
+  onEmailContinue,
+}) => {
+  const { colors, spacing, radius, typography, shadows } = useTheme();
+
+  return (
+    <View style={[styles.stepContainer, { paddingHorizontal: spacing.lg, justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={{ alignItems: 'center', width: '100%' }}>
+        <Image
+          source={require('../../../assets/social-dance-logo.png')}
+          style={styles.onboardingLogoStandalone}
+          resizeMode="contain"
+        />
+        <Text style={[typography.h1, { color: '#FFFFFF', textAlign: 'center', marginTop: spacing.lg }]}>Giriş Yap</Text>
+        <Text
+          style={[
+            typography.bodySmall,
+            {
+              color: colors.textSecondary,
+              textAlign: 'center',
+              marginTop: spacing.sm,
+              paddingHorizontal: spacing.xxxl,
+            },
+          ]}
+        >
+          Socialdance dünyasına katılmak için sana en uygun giriş yöntemini seç.
+        </Text>
+      </View>
+
+      <View style={{ width: '100%', gap: 12, marginTop: spacing.xxl }}>
+        <TouchableOpacity
+          onPress={onSocialContinue}
+          activeOpacity={0.8}
+          style={[
+            styles.socialButton,
+            {
+              backgroundColor: '#1E1E1E',
+              borderWidth: 1,
+              borderColor: '#384253',
+              borderRadius: radius.xl,
+              ...shadows.sm,
+            },
+          ]}
+        >
+          <Icon name="google" size={22} color="#FFFFFF" style={styles.socialIconLeft} />
+          <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Google ile Devam Et</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={onSocialContinue}
+          activeOpacity={0.8}
+          style={[
+            styles.socialButton,
+            {
+              backgroundColor: '#1E1E1E',
+              borderWidth: 1,
+              borderColor: '#384253',
+              borderRadius: radius.xl,
+              ...shadows.sm,
+            },
+          ]}
+        >
+          <Icon name="apple" size={22} color="#FFFFFF" style={styles.socialIconLeft} />
+          <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Apple ile Devam Et</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={{ marginTop: spacing.lg, width: '100%' }}>
+        <Button title="E-posta ile Devam Et" onPress={onEmailContinue} fullWidth size="lg" iconRight="arrow-right" />
+      </View>
+    </View>
+  );
+};
 
 const Step1Profile: React.FC<{ next: () => void; onShowAlert: (title: string, message: string) => void }> = ({ next, onShowAlert }) => {
   const { colors, spacing, radius, shadows } = useTheme();
@@ -288,10 +437,36 @@ const Step3Preferences: React.FC<{ onFinish: () => void }> = ({ onFinish }) => {
   );
 };
 
-export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
+export const OnboardingScreen: React.FC<Props> = ({ navigation, route }) => {
   const { colors, spacing, radius } = useTheme();
-  const [step, setStep] = useState(1);
+  const initialStep = route.params?.startFromStep ?? 1;
+  const [step, setStep] = useState(initialStep);
   const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null);
+
+  const stepRef = useRef(step);
+  useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Ekranı sağa çekme hareketini daha kolay yakala
+        return Math.abs(gestureState.dx) > 10;
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx > 30) {
+          const currentStep = stepRef.current;
+          // Sağa kaydırma: geri git
+          if (currentStep > 1) {
+            setStep((prev) => Math.max(1, prev - 1));
+          } else if (navigation.canGoBack()) {
+            navigation.goBack();
+          }
+        }
+      },
+    })
+  ).current;
 
   const handleFinish = async () => {
     const { storage } = await import('../../services/storage');
@@ -310,39 +485,53 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
         onCancel={() => setAlertModal(null)}
         onConfirm={() => setAlertModal(null)}
       />
-      <View style={[styles.header, { paddingHorizontal: spacing.lg }]}>
-        <TouchableOpacity
-          onPress={() => (step > 1 ? setStep(step - 1) : navigation.goBack())}
-          style={[styles.backBtn, { borderRadius: radius.full }]}
-        >
-          <Icon name="arrow-left" size={22} color={colors.icon} />
-        </TouchableOpacity>
+      <View style={{ flex: 1 }} {...panResponder.panHandlers}>
+        <View style={[styles.header, { paddingHorizontal: spacing.lg }]}>
+        {step > 1 ? (
+          <TouchableOpacity
+            onPress={() => setStep(step - 1)}
+            style={[styles.backBtn, { borderRadius: radius.full }]}
+          >
+            <Icon name="arrow-left" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.backBtn} />
+        )}
 
         <View style={styles.dots}>
-          {[1, 2, 3].map((i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                {
-                  width: i === step ? 32 : 8,
-                  backgroundColor: i === step ? colors.primary : colors.primaryAlpha20,
-                  borderRadius: radius.full,
-                },
-              ]}
-            />
-          ))}
+          {step <= 2 &&
+            [1, 2].map((i) => (
+              <View
+                key={i}
+                style={[
+                  styles.dot,
+                  {
+                    width: i === step ? 32 : 8,
+                    backgroundColor: i === step ? colors.primary : colors.primaryAlpha20,
+                    borderRadius: radius.full,
+                  },
+                ]}
+              />
+            ))}
         </View>
 
-        <TouchableOpacity onPress={handleFinish}>
-          <Text style={[{ fontSize: 14, fontWeight: '700', color: colors.textTertiary }]}>Atla</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity onPress={handleFinish}>
+            <Text style={[{ fontSize: 14, fontWeight: '700', color: colors.textTertiary }]}>Atla</Text>
+          </TouchableOpacity>
+        </View>
 
-      <View style={[styles.stepWrapper, { paddingHorizontal: spacing.lg }]}>
-        {step === 1 && <Step1Profile next={() => setStep(2)} onShowAlert={(title, message) => setAlertModal({ title, message })} />}
-        {step === 2 && <Step2Permissions next={() => setStep(3)} onShowAlert={(title, message) => setAlertModal({ title, message })} />}
-        {step === 3 && <Step3Preferences onFinish={handleFinish} />}
+        <View style={[styles.stepWrapper, { paddingHorizontal: spacing.lg }]}>
+          {step === 1 && <IntroStepWelcome next={() => setStep(2)} />}
+          {step === 2 && <IntroStepAbout next={() => setStep(3)} />}
+          {step === 3 && (
+            <IntroStepLogin
+              onSocialContinue={() => setStep(4)}
+              onEmailContinue={() => navigation.navigate('SignUp')}
+            />
+          )}
+          {step === 4 && <Step3Preferences onFinish={() => setStep(5)} />}
+          {step === 5 && <Step2Permissions next={handleFinish} onShowAlert={(title, message) => setAlertModal({ title, message })} />}
+        </View>
       </View>
     </Screen>
   );
@@ -458,5 +647,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+  },
+  onboardingLogoStandalone: {
+    width: 280,
+    height: 150,
+  },
+  socialButton: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  socialIconLeft: {
+    position: 'absolute',
+    left: 24,
   },
 });
