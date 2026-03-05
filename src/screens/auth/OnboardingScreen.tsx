@@ -12,6 +12,7 @@ import { Toggle } from '../../components/ui/Toggle';
 import { Chip } from '../../components/ui/Chip';
 import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { AuthStackParamList } from '../../types/navigation';
+import { useProfile } from '../../context/ProfileContext';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Onboarding'>;
 
@@ -422,6 +423,7 @@ const Step2Permissions: React.FC<{ next: () => void; onShowAlert: (title: string
 
 const Step3Preferences: React.FC<{ onFinish: () => void }> = ({ onFinish }) => {
   const { colors, spacing } = useTheme();
+  const { updateProfile } = useProfile();
   const dances = ['Salsa', 'Bachata', 'Hip-Hop', 'Tango', 'Kizomba', 'Swing', 'Zumba', 'Vals', 'Modern'];
   const [selected, setSelected] = useState(['Salsa']);
   const [otherInterests, setOtherInterests] = useState('');
@@ -431,12 +433,9 @@ const Step3Preferences: React.FC<{ onFinish: () => void }> = ({ onFinish }) => {
     else setSelected([...selected, dance]);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     try {
-      const { storage } = await import('../../services/storage');
-      const current = await storage.getProfile();
-      await storage.setProfile({
-        ...current,
+      updateProfile({
         favoriteDances: selected,
         otherInterests: otherInterests.trim(),
       });

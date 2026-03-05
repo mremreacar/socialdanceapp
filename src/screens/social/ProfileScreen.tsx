@@ -26,21 +26,26 @@ export const ProfileScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'following' | 'followers' | 'requests'>('following');
   const [dancedCount] = useState(42);
   const [unfollowedIds, setUnfollowedIds] = useState<Set<number>>(new Set());
-  const [confirmModal, setConfirmModal] = useState<{ userId: number; userName: string } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ userId: number; userName: string; sourceTab: 'following' | 'followers' } | null>(null);
   const [followersList, setFollowersList] = useState<UserItem[]>(initialFollowers);
   const [requestsList, setRequestsList] = useState<UserItem[]>(initialRequests);
 
   const openDrawer = () => (navigation.getParent() as any)?.openDrawer?.();
 
-  const handleUnfollowPress = (userId: number, userName: string) => {
-    setConfirmModal({ userId, userName });
+  const handleUnfollowPress = (userId: number, userName: string, sourceTab: 'following' | 'followers') => {
+    setConfirmModal({ userId, userName, sourceTab });
   };
 
   const handleConfirmUnfollow = () => {
-    if (confirmModal) {
+    if (!confirmModal) return;
+
+    if (confirmModal.sourceTab === 'following') {
       setUnfollowedIds((prev) => new Set(prev).add(confirmModal.userId));
-      setConfirmModal(null);
+    } else if (confirmModal.sourceTab === 'followers') {
+      setFollowersList((prev) => prev.filter((u) => u.id !== confirmModal.userId));
     }
+
+    setConfirmModal(null);
   };
 
   const handleFollowPress = (userId: number) => {
@@ -145,15 +150,28 @@ export const ProfileScreen: React.FC = () => {
           <View style={{ marginTop: spacing.lg }}>
             {getList().length > 0 ? (
               getList().map((user: any) => {
-                const isUnfollowed = activeTab === 'following' && unfollowedIds.has(user.id);
+                const isFollowingTab = activeTab === 'following';
+                const isFollowersTab = activeTab === 'followers';
+                const isUnfollowed = isFollowingTab && unfollowedIds.has(user.id);
+
                 const rightLabel =
-                  activeTab === 'requests' ? 'Onayla' : isUnfollowed ? 'Takip Et' : 'Takipten Çık';
+                  activeTab === 'requests'
+                    ? 'Onayla'
+                    : isUnfollowed
+                      ? 'Takip Et'
+                      : 'Takipten Çık';
+
                 const onRightPress =
                   activeTab === 'requests'
                     ? () => handleAcceptRequest(user)
                     : isUnfollowed
                       ? () => handleFollowPress(user.id)
-                      : () => handleUnfollowPress(user.id, user.name);
+                      : () =>
+                          handleUnfollowPress(
+                            user.id,
+                            user.name,
+                            isFollowersTab ? 'followers' : 'following',
+                          );
                 return (
                   <UserListItem
                     key={user.id}

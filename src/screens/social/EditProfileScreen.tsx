@@ -91,10 +91,13 @@ export const EditProfileScreen: React.FC = () => {
   const handleSave = () => {
     const displayName = [ad.trim(), soyad.trim()].filter(Boolean).join(' ') || profile.displayName;
     const username = kullaniciAdi.trim().replace(/^@/, '') || profile.username;
-    const parsedFavoriteDances = favoriDans
-      .split(',')
-      .map((d) => d.trim())
-      .filter((d) => d.length > 0);
+    const parsedFavoriteDances =
+      favoriDans.trim().length === 0
+        ? profile.favoriteDances
+        : favoriDans
+            .split(',')
+            .map((d) => d.trim())
+            .filter((d) => d.length > 0);
     updateProfile({
       displayName: displayName || 'Kullanıcı',
       username: username || profile.username,
