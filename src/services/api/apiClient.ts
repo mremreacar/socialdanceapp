@@ -116,3 +116,145 @@ export async function supabaseAuthRequest<T>(
     clearTimeout(timeout);
   }
 }
+
+export async function supabaseRestRequest<T>(
+  path: string,
+  opts: {
+    method?: HttpMethod;
+    body?: unknown;
+    accessToken?: string | null;
+    headers?: Record<string, string | undefined>;
+    timeoutMs?: number;
+  } = {},
+): Promise<T> {
+  const supabaseUrl = getSupabaseUrl();
+  const publishableKey = getSupabasePublishableKey();
+
+  if (!supabaseUrl || !publishableKey) {
+    throw new ApiError(
+      'Supabase ayarlari eksik. EXPO_PUBLIC_SUPABASE_URL ve EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY tanimlanmali.',
+      { status: 0 },
+    );
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15000);
+  const headers: Record<string, string> = {
+    apikey: publishableKey,
+    Accept: 'application/json',
+  };
+
+  if (opts.body != null) headers['Content-Type'] = 'application/json';
+  if (opts.accessToken) headers.Authorization = `Bearer ${opts.accessToken}`;
+
+  for (const [key, value] of Object.entries(opts.headers ?? {})) {
+    if (value != null) headers[key] = value;
+  }
+
+  try {
+    const res = await fetch(`${supabaseUrl}/rest/v1${path}`, {
+      method: opts.method ?? 'GET',
+      headers,
+      body: opts.body != null ? JSON.stringify(opts.body) : undefined,
+      signal: controller.signal,
+    });
+
+    const raw = await safeReadText(res);
+    const contentType = res.headers.get('content-type') || '';
+    const parsed = contentType.includes('application/json') && raw
+      ? (() => {
+          try {
+            return JSON.parse(raw);
+          } catch {
+            return undefined;
+          }
+        })()
+      : undefined;
+
+    if (!res.ok) {
+      const { message, code } = extractErrorMessage(parsed ?? raw, raw || `Request failed (${res.status})`);
+      throw new ApiError(message, { status: res.status, code, details: parsed ?? raw });
+    }
+
+    if (res.status === 204 || !raw) return undefined as T;
+    return (parsed ?? raw) as T;
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new ApiError('Request timed out.', { status: 0, code: 'TIMEOUT' });
+    }
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(err?.message || 'Network error.', { status: 0, code: 'NETWORK_ERROR', details: err });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function supabaseStorageUpload(
+  path: string,
+  opts: {
+    file: Blob;
+    contentType?: string;
+    accessToken?: string | null;
+    upsert?: boolean;
+    timeoutMs?: number;
+  },
+): Promise<void> {
+  const supabaseUrl = getSupabaseUrl();
+  const publishableKey = getSupabasePublishableKey();
+
+  if (!supabaseUrl || !publishableKey) {
+    throw new ApiError(
+      'Supabase ayarlari eksik. EXPO_PUBLIC_SUPABASE_URL ve EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY tanimlanmali.',
+      { status: 0 },
+    );
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30000);
+  const headers: Record<string, string> = {
+    apikey: publishableKey,
+    'Content-Type': opts.contentType || 'application/octet-stream',
+    'x-upsert': opts.upsert === false ? 'false' : 'true',
+  };
+
+  if (opts.accessToken) headers.Authorization = `Bearer ${opts.accessToken}`;
+
+  try {
+    const res = await fetch(`${supabaseUrl}/storage/v1/object/${path}`, {
+      method: 'POST',
+      headers,
+      body: opts.file,
+      signal: controller.signal,
+    });
+
+    const raw = await safeReadText(res);
+    const contentType = res.headers.get('content-type') || '';
+    const parsed = contentType.includes('application/json') && raw
+      ? (() => {
+          try {
+            return JSON.parse(raw);
+          } catch {
+            return undefined;
+          }
+        })()
+      : undefined;
+
+    if (!res.ok) {
+      const { message, code } = extractErrorMessage(parsed ?? raw, raw || `Request failed (${res.status})`);
+      throw new ApiError(message, { status: res.status, code, details: parsed ?? raw });
+    }
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new ApiError('Request timed out.', { status: 0, code: 'TIMEOUT' });
+    }
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(err?.message || 'Network error.', { status: 0, code: 'NETWORK_ERROR', details: err });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export function getSupabaseStoragePublicUrl(bucket: string, objectPath: string): string {
+  const supabaseUrl = getSupabaseUrl();
+  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${objectPath}`;
+}

@@ -3,7 +3,6 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, KeyboardAv
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../theme';
 import { useProfile } from '../../context/ProfileContext';
-import { getAvatarSource } from '../../context/ProfileContext';
 import { Screen } from '../../components/layout/Screen';
 import { Header } from '../../components/layout/Header';
 import { Input } from '../../components/ui/Input';
@@ -27,6 +26,7 @@ export const EditProfileScreen: React.FC = () => {
   const [sehir, setSehir] = useState('İstanbul');
   const [favoriteDances, setFavoriteDances] = useState<string[]>(profile.favoriteDances ?? []);
   const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const parts = profile.displayName.trim().split(/\s+/);
@@ -91,18 +91,29 @@ export const EditProfileScreen: React.FC = () => {
     }, 0);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (saving) return;
     const displayName = [ad.trim(), soyad.trim()].filter(Boolean).join(' ') || profile.displayName;
     const username = kullaniciAdi.trim().replace(/^@/, '') || profile.username;
-    updateProfile({
-      displayName: displayName || '',
-      username: username || '',
-      avatarUri,
-      bio: hakkimda.trim() || '',
-      email: email.trim() || '',
-      favoriteDances,
-    });
-    navigation.goBack();
+    setSaving(true);
+    try {
+      await updateProfile({
+        displayName: displayName || '',
+        username: username || '',
+        avatarUri,
+        bio: hakkimda.trim() || '',
+        email: email.trim() || '',
+        favoriteDances,
+      });
+      navigation.goBack();
+    } catch (e: any) {
+      setAlertModal({
+        title: 'Profil kaydedilemedi',
+        message: e?.message || 'Profil bilgileriniz kaydedilirken bir sorun oluştu. Lütfen tekrar deneyin.',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -133,10 +144,12 @@ export const EditProfileScreen: React.FC = () => {
             activeOpacity={0.9}
           >
             <View style={styles.avatarImageWrap}>
-              {avatarUri ? (
-                <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+              {avatarUri || profile.avatarUri ? (
+                <Image source={{ uri: avatarUri || profile.avatarUri || '' }} style={styles.avatarImage} />
               ) : (
-                <Image source={{ uri: getAvatarSource(profile.avatarUri) }} style={styles.avatarImage} />
+                <View style={[styles.avatarPlaceholder, { backgroundColor: '#311831' }]}>
+                  <Icon name="account" size={42} color="#9CA3AF" />
+                </View>
               )}
             </View>
             <View pointerEvents="none" style={[styles.cameraBadge, { backgroundColor: colors.primary }]}>
@@ -255,7 +268,7 @@ export const EditProfileScreen: React.FC = () => {
             </View>
           </View>
 
-          <Button title="Kaydet" onPress={handleSave} fullWidth size="lg" />
+          <Button title={saving ? 'Kaydediliyor...' : 'Kaydet'} onPress={handleSave} fullWidth size="lg" disabled={saving} />
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
@@ -281,6 +294,12 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
+  },
+  avatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cameraBadge: {
     position: 'absolute',

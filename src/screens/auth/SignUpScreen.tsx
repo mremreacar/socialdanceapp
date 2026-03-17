@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Alert, View, Text, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
@@ -81,15 +81,14 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       });
 
       if (res.needsEmailConfirmation) {
-        Alert.alert('E-posta dogrulamasi gerekli', 'Hesabin olusturuldu. Giris yapmadan once e-postandaki dogrulama linkine tikla.');
-        navigation.replace('EmailLogin');
+        navigation.replace('EmailVerification', { email: email.trim() });
         return;
       }
 
       setProfileFromStored(profileToStore);
       navigation.replace('Preferences');
     } catch (e: any) {
-      setError(e?.message || 'Kayit olusturulamadi.');
+      setError(e?.message || 'Kayıt oluşturulamadı.');
     } finally {
       setLoading(false);
     }
@@ -181,14 +180,14 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
                 ))}
               </View>
               <Button
-                title={loading ? 'Kayit olusturuluyor...' : 'Kayıt Ol'}
+                title={loading ? 'Kayıt oluşturuluyor...' : 'Kayıt Ol'}
                 onPress={handleSignUp}
                 fullWidth
                 style={{ marginTop: spacing.xl }}
                 disabled={!isFormValid || loading}
               />
               {error ? (
-                <Text style={[typography.bodySmall, { color: '#FCA5A5', marginTop: spacing.md, textAlign: 'center' }]}>
+                <Text style={[typography.bodySmall, { color: colors.error, marginTop: spacing.md, textAlign: 'center' }]}>
                   {error}
                 </Text>
               ) : null}
@@ -197,7 +196,7 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
             <View style={styles.loginRow}>
               <Text style={[typography.caption, { color: '#FFFFFF' }]}>Zaten hesabın var mı? </Text>
               <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-                <Text style={[typography.captionBold, { color: '#FFFFFF' }]}>Giriş Yap</Text>
+                <Text style={[typography.captionBold, { color: colors.primary }]}>Giriş Yap</Text>
               </TouchableOpacity>
             </View>
           </View>

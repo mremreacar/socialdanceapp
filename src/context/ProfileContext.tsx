@@ -3,8 +3,6 @@ import { storage, StoredProfile } from '../services/storage';
 import { hasSupabaseConfig } from '../services/api/apiClient';
 import { profileService } from '../services/api/profile';
 
-const DEFAULT_AVATAR_URL = 'https://lh3.googleusercontent.com/aida-public/AB6AXuAozkav3nW4pjxxBTZ9r4bnylgPIqCTaCZfeooT-iWfynJKZXgRv-HsTDa3vAtFwVs-S0q_5DxzyefpzHzF9dxop2EIWngyydzbp00sS9RD_GW7EAYzlT5uL0xw7zjOZu4BhH4QjAGHvnjHbl6blJTPQPYsnNb08fT2JwDrOlRZhBHfCqRwlN3GOJq-wj48GfdD3ZyLxdmrkroY0i1ic51l_ssDbmO_cM2bldocE_cHmHuSYfM4JE3Up_oWcyj3HNikmvQ4rUzFrWE';
-
 export interface Profile {
   displayName: string;
   username: string;
@@ -16,15 +14,25 @@ export interface Profile {
 }
 
 export function getAvatarSource(avatarUri: string | null): string {
-  return avatarUri ?? DEFAULT_AVATAR_URL;
+  return avatarUri ?? '';
 }
+
+const EMPTY_PROFILE: Profile = {
+  displayName: '',
+  username: '',
+  avatarUri: null,
+  bio: '',
+  email: '',
+  favoriteDances: [],
+  otherInterests: '',
+};
 
 interface ProfileContextValue {
   profile: Profile;
   avatarSource: string;
   loading: boolean;
   error: string | null;
-  updateProfile: (updates: Partial<Profile>) => void;
+  updateProfile: (updates: Partial<Profile>) => Promise<Profile>;
   setProfileFromStored: (stored: StoredProfile) => void;
   refreshProfile: () => Promise<void>;
 }
@@ -59,20 +67,13 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Backend-driven profile: if there is no session hint (or API), never show stale cached profile.
     if (!hasApi || (!token && !refreshToken)) {
       await storage.clearProfile();
-      applyProfile({
-        displayName: '',
-        username: '',
-        avatarUri: null,
-        bio: '',
-        email: '',
-        favoriteDances: [],
-        otherInterests: '',
-      });
+      applyProfile(EMPTY_PROFILE);
       return;
     }
 
     const remote = await profileService.getMe();
     applyProfile(remote);
+    await storage.setProfile(remote);
   }, [applyProfile]);
 
   useEffect(() => {
@@ -101,18 +102,32 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       favoriteDances: stored.favoriteDances ?? [],
       otherInterests: stored.otherInterests ?? '',
     });
+    storage.setProfile(stored).catch(() => {});
   }, []);
 
-  const updateProfile = useCallback((updates: Partial<Profile>) => {
-    setProfileState((prev) => {
-      const next = { ...prev, ...updates };
-      const hasApi = hasSupabaseConfig();
-      if (hasApi) {
-        profileService.updateMe(next).catch(() => {});
-      }
-      return next;
-    });
-  }, []);
+  const updateProfile = useCallback(async (updates: Partial<Profile>) => {
+    setError(null);
+
+    const nextProfile = { ...profile, ...updates };
+    setProfileState(nextProfile);
+
+    await storage.setProfile(nextProfile);
+
+    const hasApi = hasSupabaseConfig();
+    const [token, refreshToken] = await Promise.all([
+      storage.getAccessToken(),
+      storage.getRefreshToken(),
+    ]);
+
+    if (!hasApi || (!token && !refreshToken)) {
+      return nextProfile;
+    }
+
+    const remoteProfile = await profileService.updateMe(nextProfile);
+    applyProfile(remoteProfile);
+    await storage.setProfile(remoteProfile);
+    return remoteProfile;
+  }, [applyProfile, profile]);
 
   const avatarSource = getAvatarSource(profile.avatarUri);
 

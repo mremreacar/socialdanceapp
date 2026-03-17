@@ -20,6 +20,7 @@ export const EmailLoginScreen: React.FC<Props> = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorBorderColor = error ? colors.error : inputBorderColor;
 
   const isEmailValid = useMemo(() => /^\S+@\S+\.\S+$/.test(email.trim()), [email]);
   const isFormValid = isEmailValid && password.length >= 1;
@@ -67,27 +68,40 @@ export const EmailLoginScreen: React.FC<Props> = ({ navigation }) => {
                   autoCapitalize="none"
                   leftIcon="email-outline"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(value) => {
+                    setEmail(value);
+                    if (error) setError(null);
+                  }}
                   backgroundColor="transparent"
-                  borderColor={inputBorderColor}
+                  borderColor={errorBorderColor}
                   height={60}
                   style={{ color: '#FFFFFF' }}
                 />
                 <Input
                   placeholder="Şifre"
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(value) => {
+                    setPassword(value);
+                    if (error) setError(null);
+                  }}
                   secureTextEntry={!showPassword}
                   leftIcon="lock-outline"
                   rightIcon={showPassword ? 'eye-off-outline' : 'eye-outline'}
                   onRightIconPress={() => setShowPassword((v) => !v)}
                   containerStyle={{ marginTop: spacing.md }}
                   backgroundColor="transparent"
-                  borderColor={inputBorderColor}
+                  borderColor={errorBorderColor}
                   height={60}
                   style={{ color: '#FFFFFF' }}
                   autoCorrect={false}
                 />
+                <View style={{ alignItems: 'flex-end', marginTop: spacing.md }}>
+                  <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword', { email: email.trim() || undefined })} activeOpacity={0.8}>
+                    <Text style={[typography.captionBold, { color: colors.primary }]}>
+                      Şifremi Unuttum
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
                 <Button
                   title={loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
@@ -97,7 +111,7 @@ export const EmailLoginScreen: React.FC<Props> = ({ navigation }) => {
                   disabled={!isFormValid || loading}
                 />
                 {error ? (
-                  <Text style={[typography.bodySmall, { color: '#FCA5A5', marginTop: spacing.md, textAlign: 'center' }]}>
+                  <Text style={[typography.bodySmall, { color: colors.error, marginTop: spacing.md, textAlign: 'center' }]}>
                     {error}
                   </Text>
                 ) : null}
@@ -125,8 +139,9 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
+    paddingTop: 12,
   },
   formSection: {
     width: '100%',

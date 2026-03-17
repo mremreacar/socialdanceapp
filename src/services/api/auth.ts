@@ -44,64 +44,115 @@ async function persistSession(session: { accessToken?: string; refreshToken?: st
   ]);
 }
 
+function normalizeLoginErrorMessage(message: string): string {
+  const normalized = message.trim().toLowerCase();
+  if (normalized === 'invalid login credentials') {
+    return 'Giriş yapılamadı. Lütfen e-posta adresinizi ve şifrenizi kontrol ederek tekrar deneyiniz.';
+  }
+  if (normalized === 'email not confirmed') {
+    return 'E-posta adresiniz henüz doğrulanmamış. Lütfen e-posta kutunuzu kontrol ederek hesabınızı doğrulayınız.';
+  }
+
+  return message;
+}
+
+function normalizeSignUpErrorMessage(message: string): string {
+  const normalized = message.trim().toLowerCase();
+  if (normalized === 'email signups are disabled') {
+    return 'Yeni hesap oluşturma işlemi şu anda kullanılamamaktadır.';
+  }
+
+  return message;
+}
+
+function normalizeForgotPasswordErrorMessage(message: string): string {
+  const normalized = message.trim().toLowerCase();
+  if (normalized.includes('rate limit')) {
+    return 'Şifre yenileme isteği kısa süre önce gönderildi. Lütfen biraz bekleyip tekrar deneyiniz.';
+  }
+
+  return message;
+}
+
 export const authService = {
   async login(email: string, password: string): Promise<void> {
-    const payload: LoginRequestDto = { email: email.trim(), password };
-    const res = await supabaseAuthRequest<SupabaseAuthResponse>('/token?grant_type=password', {
-      method: 'POST',
-      body: payload,
-    });
+    try {
+      const payload: LoginRequestDto = { email: email.trim(), password };
+      const res = await supabaseAuthRequest<SupabaseAuthResponse>('/token?grant_type=password', {
+        method: 'POST',
+        body: payload,
+      });
 
-    const mapped: LoginResponseDto = {
-      accessToken: res.access_token || '',
-      refreshToken: res.refresh_token || '',
-      user: mapSupabaseUser(res.user),
-    };
+      const mapped: LoginResponseDto = {
+        accessToken: res.access_token || '',
+        refreshToken: res.refresh_token || '',
+        user: mapSupabaseUser(res.user),
+      };
 
-    if (!mapped.accessToken || !mapped.refreshToken) {
-      throw new Error('Login response missing access token.');
+      if (!mapped.accessToken || !mapped.refreshToken) {
+        throw new Error('Login response missing access token.');
+      }
+
+      await persistSession(mapped);
+    } catch (error: any) {
+      throw new Error(normalizeLoginErrorMessage(error?.message || 'Giris yapilamadi.'));
     }
-
-    await persistSession(mapped);
   },
 
   async signUp(input: SignUpRequestDto): Promise<SignUpResponseDto> {
-    const res = await supabaseAuthRequest<SupabaseAuthResponse>('/signup', {
-      method: 'POST',
-      body: {
-        email: input.email.trim(),
-        password: input.password,
-        data: {
-          displayName: input.displayName,
-          username: input.username,
-          favoriteDances: [],
-          otherInterests: '',
-          bio: '',
-          avatarUrl: null,
+    try {
+      const res = await supabaseAuthRequest<SupabaseAuthResponse>('/signup', {
+        method: 'POST',
+        body: {
+          email: input.email.trim(),
+          password: input.password,
+          data: {
+            displayName: input.displayName,
+            username: input.username,
+            favoriteDances: [],
+            otherInterests: '',
+            bio: '',
+            avatarUrl: null,
+          },
         },
-      },
-    });
+      });
 
-    const accessToken = res.access_token;
-    const refreshToken = res.refresh_token;
-    const needsEmailConfirmation = !accessToken || !refreshToken;
+      const accessToken = res.access_token;
+      const refreshToken = res.refresh_token;
+      const needsEmailConfirmation = !accessToken || !refreshToken;
 
-    if (!needsEmailConfirmation) {
-      await persistSession({ accessToken, refreshToken });
-    } else {
-      await Promise.all([
-        storage.setLoggedIn(false),
-        storage.clearAccessToken(),
-        storage.clearRefreshToken(),
-      ]);
+      if (!needsEmailConfirmation) {
+        await persistSession({ accessToken, refreshToken });
+      } else {
+        await Promise.all([
+          storage.setLoggedIn(false),
+          storage.clearAccessToken(),
+          storage.clearRefreshToken(),
+        ]);
+      }
+
+      return {
+        accessToken,
+        refreshToken,
+        needsEmailConfirmation,
+        user: mapSupabaseUser(res.user),
+      };
+    } catch (error: any) {
+      throw new Error(normalizeSignUpErrorMessage(error?.message || 'Kayıt oluşturulamadı.'));
     }
+  },
 
-    return {
-      accessToken,
-      refreshToken,
-      needsEmailConfirmation,
-      user: mapSupabaseUser(res.user),
-    };
+  async requestPasswordReset(email: string): Promise<void> {
+    try {
+      await supabaseAuthRequest('/recover', {
+        method: 'POST',
+        body: {
+          email: email.trim(),
+        },
+      });
+    } catch (error: any) {
+      throw new Error(normalizeForgotPasswordErrorMessage(error?.message || 'Şifre yenileme bağlantısı gönderilemedi.'));
+    }
   },
 
   async logout(): Promise<void> {

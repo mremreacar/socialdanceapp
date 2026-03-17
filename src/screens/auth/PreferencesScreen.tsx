@@ -14,7 +14,7 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'Preferences'>;
 const DANCES = ['Salsa', 'Bachata', 'Hip-Hop', 'Tango', 'Kizomba', 'Swing', 'Zumba', 'Vals', 'Modern'] as const;
 
 export const PreferencesScreen: React.FC<Props> = ({ navigation }) => {
-  const { colors, spacing } = useTheme();
+  const { colors, spacing, typography } = useTheme();
   const { profile, updateProfile } = useProfile();
 
   const initialSelected = useMemo(() => {
@@ -25,6 +25,7 @@ export const PreferencesScreen: React.FC<Props> = ({ navigation }) => {
   const [selected, setSelected] = useState<string[]>(initialSelected);
   const [otherInterests, setOtherInterests] = useState(profile.otherInterests ?? '');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const toggleDance = (dance: string) => {
     setSelected((prev) => (prev.includes(dance) ? prev.filter((d) => d !== dance) : [...prev, dance]));
@@ -33,16 +34,18 @@ export const PreferencesScreen: React.FC<Props> = ({ navigation }) => {
   const handleContinue = async () => {
     if (saving) return;
     setSaving(true);
+    setError(null);
     try {
-      updateProfile({
+      await updateProfile({
         favoriteDances: selected,
         otherInterests: otherInterests.trim(),
       });
+      (navigation.getParent() as any)?.reset({ index: 0, routes: [{ name: 'App' }] });
+    } catch (e: any) {
+      setError(e?.message || 'Tercihleriniz kaydedilemedi. Lütfen tekrar deneyiniz.');
     } finally {
       setSaving(false);
     }
-
-    (navigation.getParent() as any)?.reset({ index: 0, routes: [{ name: 'App' }] });
   };
 
   return (
@@ -79,6 +82,11 @@ export const PreferencesScreen: React.FC<Props> = ({ navigation }) => {
           </View>
 
           <View style={{ flex: 1, minHeight: 24 }} />
+          {error ? (
+            <Text style={[typography.bodySmall, { color: colors.error, textAlign: 'center', marginBottom: spacing.md }]}>
+              {error}
+            </Text>
+          ) : null}
           <Button title={saving ? 'Kaydediliyor...' : 'Kaydet'} onPress={handleContinue} fullWidth iconRight="arrow-right" size="lg" disabled={saving} />
         </View>
       </ScrollView>
@@ -119,4 +127,3 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
-
