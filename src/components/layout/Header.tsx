@@ -8,6 +8,7 @@ const headerLogo = require('../../../assets/header-logo.png');
 
 interface HeaderProps {
   title: string;
+  titleColor?: string;
   /** Başlık yerine logo göster (ana sayfalar için) */
   showLogo?: boolean;
   showBack?: boolean;
@@ -32,6 +33,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   title,
+  titleColor,
   showLogo = false,
   showBack = true,
   onBackPress,
@@ -103,12 +105,12 @@ export const Header: React.FC<HeaderProps> = ({
         <View style={[styles.center, styles.titleWrap]}>
           {onTitlePress ? (
             <TouchableOpacity onPress={onTitlePress} style={styles.titleTouch} activeOpacity={0.7}>
-              <Text style={[typography.h4, { color: colors.headerText ?? colors.text }, styles.titleText]} numberOfLines={2} ellipsizeMode="tail">
+              <Text style={[typography.h4, { color: titleColor ?? colors.headerText ?? colors.text }, styles.titleText]} numberOfLines={2} ellipsizeMode="tail">
                 {title}
               </Text>
             </TouchableOpacity>
           ) : (
-            <Text style={[typography.h4, { color: colors.headerText ?? colors.text }, styles.titleText]} numberOfLines={2} ellipsizeMode="tail">
+            <Text style={[typography.h4, { color: titleColor ?? colors.headerText ?? colors.text }, styles.titleText]} numberOfLines={2} ellipsizeMode="tail">
               {title}
             </Text>
           )}

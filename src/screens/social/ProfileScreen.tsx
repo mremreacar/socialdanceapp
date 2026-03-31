@@ -15,6 +15,11 @@ import { followService } from '../../services/api/follows';
 
 type UserItem = { id: number; name: string; handle: string; img: string };
 
+function isSupabasePublicAvatarUrl(uri: string | null | undefined): boolean {
+  if (!uri) return false;
+  return /^https?:\/\//i.test(uri) && uri.includes('/storage/v1/object/public/');
+}
+
 export const ProfileScreen: React.FC = () => {
   const navigation = useNavigation();
   const { colors, spacing, typography } = useTheme();
@@ -29,6 +34,7 @@ export const ProfileScreen: React.FC = () => {
   const [requestsList, setRequestsList] = useState<UserItem[]>([]);
   const [followCounts, setFollowCounts] = useState<{ following: number; followers: number }>({ following: 0, followers: 0 });
   const [refreshing, setRefreshing] = useState(false);
+  const shouldShowAvatarWarning = !!profile.avatarUri && !isSupabasePublicAvatarUrl(profile.avatarUri);
 
   const openDrawer = () => (navigation.getParent() as any)?.openDrawer?.();
 
@@ -153,6 +159,11 @@ export const ProfileScreen: React.FC = () => {
         {profile.bio ? (
           <Text style={[typography.bodySmall, { color: '#9CA3AF', textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.xxl }]}>
             {profile.bio}
+          </Text>
+        ) : null}
+        {shouldShowAvatarWarning ? (
+          <Text style={[typography.caption, { color: '#F59E0B', textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.xl }]}>
+            Uyarı: Profil fotoğrafınızın güncellenmesi için fotoğrafınızı tekrar seçip Kaydet yapın.
           </Text>
         ) : null}
 

@@ -85,7 +85,17 @@ export const MyEventsScreen: React.FC = () => {
               />
               {event.isDanceStar && (
                 <TouchableOpacity
-                  onPress={() => navigation.navigate('DanceStar')}
+                  onPress={() =>
+                    navigation.navigate('DanceStar', {
+                      eventId: String(event.id),
+                      eventTitle: event.title,
+                      attendees: (event.attendeeAvatars ?? []).map((avatar, index) => ({
+                        id: `ev-${event.id}-${index}`,
+                        name: `Dansçı ${index + 1}`,
+                        avatar,
+                      })),
+                    })
+                  }
                   style={[styles.dqBtn, { backgroundColor: colors.purple, marginTop: spacing.sm }]}
                 >
                   <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>DanceStar ⭐</Text>

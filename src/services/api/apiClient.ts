@@ -64,6 +64,9 @@ function isJwtExpiredError(err: ApiError): boolean {
     msg.includes('jwt expired') ||
     msg.includes('expired jwt') ||
     msg.includes('token is expired') ||
+    msg.includes('invalid jwt') ||
+    msg.includes('unable to parse') ||
+    msg.includes('verify signature') ||
     code.includes('jwt') ||
     code.includes('expired')
   );
@@ -150,7 +153,24 @@ export async function supabaseAuthRequest<T>(
 
     if (!res.ok) {
       const { message, code } = extractErrorMessage(parsed ?? raw, raw || `Request failed (${res.status})`);
-      throw new ApiError(message, { status: res.status, code, details: parsed ?? raw });
+      const apiErr = new ApiError(message, { status: res.status, code, details: parsed ?? raw });
+      const canRetry = apiErr.status === 401 && isJwtExpiredError(apiErr) && !!opts.accessToken;
+      if (canRetry) {
+        const nextAccess = await tryRefreshAccessToken();
+        if (nextAccess) {
+          return await supabaseAuthRequest<T>(path, {
+            ...opts,
+            accessToken: nextAccess,
+          });
+        }
+        await expireSession();
+        throw new ApiError('Oturum süreniz doldu. Lütfen tekrar giriş yapın.', {
+          status: 401,
+          code: 'SESSION_EXPIRED',
+          details: apiErr.details,
+        });
+      }
+      throw apiErr;
     }
 
     if (res.status === 204 || !raw) return undefined as T;

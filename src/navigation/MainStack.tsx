@@ -25,6 +25,7 @@ import { SettingsAboutScreen } from '../screens/social/SettingsAboutScreen';
 import { ViewUserProfileScreen } from '../screens/social/ViewUserProfileScreen';
 import { FavoriteSchoolsScreen } from '../screens/social/FavoriteSchoolsScreen';
 import { FavoritesHubScreen } from '../screens/social/FavoritesHubScreen';
+import { ExploreSearchScreen } from '../screens/explore/ExploreSearchScreen';
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
 
@@ -32,6 +33,7 @@ export const MainStack: React.FC = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MainTabs" component={MainTabs} />
+      <Stack.Screen name="ExploreSearch" component={ExploreSearchScreen} />
       <Stack.Screen name="EventDetails" component={EventDetailsScreen} />
       <Stack.Screen name="SchoolDetails" component={SchoolDetailsScreen} />
       <Stack.Screen name="FavoriteSchools" component={FavoriteSchoolsScreen} />

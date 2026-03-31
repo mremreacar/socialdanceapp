@@ -11,6 +11,11 @@ import { Icon } from '../../components/ui/Icon';
 import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { Chip } from '../../components/ui/Chip';
 
+function isSupabasePublicAvatarUrl(uri: string | null | undefined): boolean {
+  if (!uri) return false;
+  return /^https?:\/\//i.test(uri) && uri.includes('/storage/v1/object/public/');
+}
+
 export const EditProfileScreen: React.FC = () => {
   const navigation = useNavigation();
   const { colors, spacing, typography, radius } = useTheme();
@@ -28,6 +33,8 @@ export const EditProfileScreen: React.FC = () => {
   const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const activeAvatarUri = avatarUri ?? profile.avatarUri;
+  const shouldShowAvatarWarning = !!activeAvatarUri && !isSupabasePublicAvatarUrl(activeAvatarUri);
 
   useEffect(() => {
     const parts = profile.displayName.trim().split(/\s+/);
@@ -179,6 +186,21 @@ export const EditProfileScreen: React.FC = () => {
               <Icon name="camera-plus" size={18} color="#FFFFFF" />
             </View>
           </TouchableOpacity>
+          {shouldShowAvatarWarning ? (
+            <Text
+              style={[
+                typography.caption,
+                {
+                  color: '#F59E0B',
+                  textAlign: 'center',
+                  marginTop: -spacing.sm,
+                  marginBottom: spacing.lg,
+                },
+              ]}
+            >
+              Uyarı: Profil fotoğrafınızın güncellenmesi için fotoğrafınızı tekrar seçip Kaydet yapın.
+            </Text>
+          ) : null}
 
           <Text style={[typography.label, { color: '#FFFFFF', marginTop: spacing.lg, marginBottom: spacing.xs }]}>Ad</Text>
           <Input

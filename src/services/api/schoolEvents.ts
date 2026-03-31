@@ -17,3 +17,11 @@ export async function listSchoolEvents(schoolId: string, limit = 20): Promise<Sc
     { method: 'GET' },
   );
 }
+
+export async function getSchoolEventById(eventId: string): Promise<SchoolEventRow | null> {
+  const rows = await supabaseRestRequest<SchoolEventRow[]>(
+    `/school_events?select=id,school_id,title,starts_at,location,image_url,description&id=eq.${encodeURIComponent(eventId)}&limit=1`,
+    { method: 'GET' },
+  );
+  return rows?.[0] ?? null;
+}

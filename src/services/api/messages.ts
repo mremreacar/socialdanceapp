@@ -147,6 +147,25 @@ export function formatMessageTime(iso: string): string {
 type MemberRow = { conversation_id: string; user_id: string };
 type MembershipRow = { conversation_id: string; last_read_at: string };
 
+async function findConversationWithPeerViaRest(accessToken: string, peerUserId: string): Promise<string | null> {
+  const me = await getMyUserId(accessToken);
+  const memberships = await supabaseRestRequest<{ conversation_id: string }[]>(
+    `/dm_conversation_members?user_id=eq.${encodeURIComponent(me)}&select=conversation_id`,
+    { accessToken },
+  );
+  const myConversationIds = [...new Set((memberships ?? []).map((m) => m.conversation_id).filter(Boolean))];
+  if (myConversationIds.length === 0) return null;
+
+  const inConv = myConversationIds.map((id) => encodeURIComponent(id)).join(',');
+  const peerMemberships = await supabaseRestRequest<{ conversation_id: string }[]>(
+    `/dm_conversation_members?user_id=eq.${encodeURIComponent(peerUserId)}&conversation_id=in.(${inConv})&select=conversation_id`,
+    { accessToken },
+  );
+
+  const match = (peerMemberships ?? [])[0]?.conversation_id;
+  return match ?? null;
+}
+
 /** PostgREST RPC yok / schema cache sorunu olduğunda sohbet listesi (doğrudan tablolar) */
 async function listConversationsViaRest(accessToken: string): Promise<ConversationListItem[]> {
   const me = await getMyUserId(accessToken);
@@ -295,8 +314,10 @@ export const messageService = {
         return result;
       } catch (e) {
         if (isMissingRpcError(e)) {
+          const existingConversation = await findConversationWithPeerViaRest(accessToken, peerUserId);
+          if (existingConversation) return existingConversation;
           throw new ApiError(
-            'Sohbet açılamıyor: Supabase’te dm_get_or_create fonksiyonu yok veya API şeması güncel değil. SQL migration’ını çalıştırıp ardından SQL editörde: notify pgrst, \'reload schema\'; deneyin.',
+            'Sohbet açılamıyor. Mevcut konuşma bulunamadı ve yeni konuşma oluşturmak için dm_get_or_create RPC gerekli. Supabase migration çalıştırıp "notify pgrst, \'reload schema\';" komutunu uygulayın.',
             { status: 503, code: 'RPC_MISSING', details: e },
           );
         }
@@ -394,7 +415,7 @@ export const messageService = {
     });
   },
 
-  /** Takip edilen kullanıcılar — yeni sohbet ekranı için */
+  /** Yeni sohbet ekranı için kullanıcılar (takip edilenler önde) */
   async listFollowingPeers(): Promise<{ id: string; name: string; avatar: string; subtitle: string }[]> {
     return await withAuthorizedUserRequest(async (accessToken) => {
       const me = await getMyUserId(accessToken);
@@ -402,21 +423,26 @@ export const messageService = {
         `/follows?follower_id=eq.${encodeURIComponent(me)}&select=following_id`,
         { accessToken },
       );
-      const ids = (follows ?? []).map((f) => f.following_id).filter(Boolean);
-      if (ids.length === 0) return [];
-
-      const inList = ids.map((id) => encodeURIComponent(id)).join(',');
+      const followedIds = new Set((follows ?? []).map((f) => f.following_id).filter(Boolean));
       const profiles = await supabaseRestRequest<ProfileRow[]>(
-        `/profiles?select=id,display_name,username,avatar_url&id=in.(${inList})`,
+        `/profiles?select=id,display_name,username,avatar_url&id=neq.${encodeURIComponent(me)}`,
         { accessToken },
       );
 
-      return (profiles ?? []).map((p) => ({
+      const rows = (profiles ?? []).map((p) => ({
         id: p.id,
         name: (p.display_name ?? '').trim() || (p.username ?? '').trim() || 'Kullanıcı',
         avatar: p.avatar_url ?? '',
         subtitle: (p.username ?? '').trim() ? `@${(p.username ?? '').trim()}` : '',
+        isFollowed: followedIds.has(p.id),
       }));
+
+      rows.sort((a, b) => {
+        if (a.isFollowed !== b.isFollowed) return a.isFollowed ? -1 : 1;
+        return a.name.localeCompare(b.name, 'tr');
+      });
+
+      return rows.map(({ isFollowed: _isFollowed, ...rest }) => rest);
     });
   },
 };

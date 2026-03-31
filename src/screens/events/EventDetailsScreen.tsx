@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Share, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -13,8 +13,26 @@ import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { mockEvents, mockFavoritesEvents } from '../../constants/mockData';
 import { MainStackParamList } from '../../types/navigation';
 import { scheduleEventReminder } from '../../services/notifications';
+import { getSchoolEventById } from '../../services/api/schoolEvents';
+import { schoolEventAttendeesService, type EventAttendee } from '../../services/api/schoolEventAttendees';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'EventDetails'>;
+
+function isUuid(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+}
+
+function formatStartsAtLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('tr-TR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const { colors, spacing, radius, typography } = useTheme();
@@ -33,13 +51,99 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [leaveModalVisible, setLeaveModalVisible] = useState(false);
   const [friendsModalVisible, setFriendsModalVisible] = useState(false);
+  const [remoteEvent, setRemoteEvent] = useState<{
+    title: string;
+    dateLabel: string;
+    startsAtDate: Date | null;
+    location: string;
+    image: string;
+    description: string;
+  } | null>(null);
+  const [dbAttendees, setDbAttendees] = useState<EventAttendee[] | null>(null);
   const capacity = 50;
 
+  useEffect(() => {
+    if (!isUuid(route.params.id)) {
+      setRemoteEvent(null);
+      return;
+    }
+    void getSchoolEventById(route.params.id)
+      .then((row) => {
+        if (!row) {
+          setRemoteEvent(null);
+          return;
+        }
+        const startsAt = new Date(row.starts_at);
+        setRemoteEvent({
+          title: row.title?.trim() || event.title,
+          dateLabel: formatStartsAtLabel(row.starts_at) || event.date,
+          startsAtDate: Number.isNaN(startsAt.getTime()) ? null : startsAt,
+          location: row.location?.trim() || event.location,
+          image: row.image_url?.trim() || event.image,
+          description: row.description?.trim() || event.description || '',
+        });
+      })
+      .catch(() => setRemoteEvent(null));
+  }, [route.params.id]);
+
+  const eventTitle = remoteEvent?.title ?? event.title;
+  const eventDateLabel = remoteEvent?.dateLabel ?? event.date;
+  const eventLocation = remoteEvent?.location ?? event.location;
+  const eventImage = remoteEvent?.image ?? event.image;
+  const eventDescription =
+    remoteEvent?.description ||
+    event.description ||
+    `${eventTitle} ile unutulmaz bir dans gecesi sizi bekliyor. Canlı müzik ve harika bir atmosferde ${event.danceType ?? 'Latin'} ritimlerine kendinizi bırakın.`;
+  const effectiveRawDate = remoteEvent?.startsAtDate ?? event.rawDate ?? null;
+  const isDbEvent = isUuid(route.params.id);
+  const attendeeList: EventAttendee[] = dbAttendees ?? (event.attendeeAvatars ?? ['https://i.pravatar.cc/150?u=1', 'https://i.pravatar.cc/150?u=2', 'https://i.pravatar.cc/150?u=3']).map((avatar, i) => ({
+    id: `event-${event.id}-${i}`,
+    name: `Dansçı ${i + 1}`,
+    avatar,
+  }));
+  const attendingCount = isDbEvent ? attendeeList.length : attending;
+
+  useEffect(() => {
+    if (!isDbEvent) {
+      setDbAttendees(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [list, joined] = await Promise.all([
+          schoolEventAttendeesService.list(route.params.id),
+          schoolEventAttendeesService.isJoined(route.params.id),
+        ]);
+        if (cancelled) return;
+        setDbAttendees(list);
+        setHasJoined(joined);
+      } catch {
+        if (!cancelled) setDbAttendees([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isDbEvent, route.params.id]);
+
   const handleJoin = async () => {
-    setHasJoined(true);
-    setAttending((prev) => prev + 1);
-    if (event.rawDate && !reminderScheduled) {
-      const id = await scheduleEventReminder(event.title, event.rawDate);
+    if (isDbEvent) {
+      try {
+        await schoolEventAttendeesService.join(route.params.id);
+        const list = await schoolEventAttendeesService.list(route.params.id);
+        setDbAttendees(list);
+        setHasJoined(true);
+      } catch {
+        setJoinModalVisible(true);
+        return;
+      }
+    } else {
+      setHasJoined(true);
+      setAttending((prev) => prev + 1);
+    }
+    if (effectiveRawDate && !reminderScheduled) {
+      const id = await scheduleEventReminder(eventTitle, effectiveRawDate);
       if (id) setReminderScheduled(true);
     }
     setJoinModalVisible(true);
@@ -50,15 +154,25 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const confirmLeave = () => {
-    setHasJoined(false);
-    setAttending((prev) => Math.max(0, prev - 1));
+    if (isDbEvent) {
+      void schoolEventAttendeesService.leave(route.params.id)
+        .then(() => schoolEventAttendeesService.list(route.params.id))
+        .then((list) => {
+          setDbAttendees(list);
+          setHasJoined(false);
+        })
+        .catch(() => {});
+    } else {
+      setHasJoined(false);
+      setAttending((prev) => Math.max(0, prev - 1));
+    }
     setLeaveModalVisible(false);
   };
 
   const handleShare = () => {
     Share.share({
-      message: `${event.title}\n${event.date}\n${event.location}\n${event.price ?? ''}`,
-      title: event.title,
+      message: `${eventTitle}\n${eventDateLabel}\n${eventLocation}\n${event.price ?? ''}`,
+      title: eventTitle,
     }).catch(() => {});
   };
 
@@ -75,7 +189,7 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         onPress={async () => {
           const next = !isFavorite;
           setIsFavorite(next);
-          if (next && event.rawDate) await scheduleEventReminder(event.title, event.rawDate);
+          if (next && effectiveRawDate) await scheduleEventReminder(eventTitle, effectiveRawDate);
         }}
         style={[styles.headerOverlayBtn, { borderRadius: radius.full, marginTop: 8 }]}
         activeOpacity={0.7}
@@ -122,25 +236,23 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               Katılan arkadaşlar
             </Text>
             <ScrollView style={{ maxHeight: 320 }}>
-              {(event.attendeeAvatars ?? ['https://i.pravatar.cc/150?u=1', 'https://i.pravatar.cc/150?u=2']).map(
-                (avatar, index) => {
-                  const name = `Dansçı ${index + 1}`;
+              {attendeeList.map((attendee, index) => {
+                  const name = attendee.name;
                   return (
                     <TouchableOpacity
-                      key={avatar + index}
+                      key={attendee.id + index}
                       activeOpacity={0.7}
                       onPress={() => {
                         setFriendsModalVisible(false);
-                        navigation.navigate('UserProfile', { userId: `event-${event.id}-${index}`, name, avatar });
+                        navigation.navigate('UserProfile', { userId: attendee.id, name, avatar: attendee.avatar });
                       }}
                       style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}
                     >
-                      <Avatar source={avatar} size="sm" />
+                      <Avatar source={attendee.avatar} size="sm" />
                       <Text style={[typography.bodySmall, { color: '#FFFFFF', marginLeft: spacing.md }]}>{name}</Text>
                     </TouchableOpacity>
                   );
-                },
-              )}
+                })}
             </ScrollView>
             <Button
               title="Kapat"
@@ -159,23 +271,23 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.heroWrap}>
-          <Image source={{ uri: event.image }} style={styles.heroImage} />
+          <Image source={{ uri: eventImage }} style={styles.heroImage} />
           <View style={[styles.heroGradient, { backgroundColor: 'transparent' }]} />
         </View>
 
         <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.xl }}>
-            <Text style={[typography.h3, { color: '#FFFFFF' }]}>{event.title}</Text>
+            <Text style={[typography.h3, { color: '#FFFFFF' }]}>{eventTitle}</Text>
             <View style={[styles.row, { marginTop: spacing.sm }]}>
               <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
                 <Icon name="calendar-outline" size={18} color={colors.primary} />
               </View>
-              <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.85)', marginLeft: spacing.sm }]}>{event.date}</Text>
+              <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.85)', marginLeft: spacing.sm }]}>{eventDateLabel}</Text>
             </View>
             <View style={[styles.row, { marginTop: spacing.xs }]}>
               <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
                 <Icon name="map-marker-outline" size={18} color={colors.primary} />
               </View>
-              <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.85)', marginLeft: spacing.sm }]}>{event.location}</Text>
+              <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.85)', marginLeft: spacing.sm }]}>{eventLocation}</Text>
             </View>
             {event.danceType != null && (
               <View style={[styles.row, { marginTop: spacing.sm }]}>
@@ -203,9 +315,9 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 <View style={{ marginLeft: spacing.sm, flex: 1 }}>
                   <View style={styles.rowBetween}>
                     <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.7)' }]}>Kapasite</Text>
-                    <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{attending} / {capacity}</Text>
+                    <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{attendingCount} / {capacity}</Text>
                   </View>
-                  <ProgressBar progress={attending / capacity} height={4} style={{ marginTop: 6, width: '100%' }} />
+                  <ProgressBar progress={attendingCount / capacity} height={4} style={{ marginTop: 6, width: '100%' }} />
                 </View>
               </View>
             </View>
@@ -227,19 +339,17 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             <View style={styles.friendsRow}>
               <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Katılan arkadaşlar</Text>
               <View style={styles.avatars}>
-                {(event.attendeeAvatars ?? ['https://i.pravatar.cc/150?u=1', 'https://i.pravatar.cc/150?u=2', 'https://i.pravatar.cc/150?u=3'])
-                  .slice(0, 3)
-                  .map((avatar, i) => (
+                {attendeeList.slice(0, 3).map((attendee, i) => (
                     <TouchableOpacity
-                      key={i}
+                      key={attendee.id}
                       activeOpacity={0.8}
                       onPress={(e) => {
                         e.stopPropagation();
-                        navigation.navigate('UserProfile', { userId: `event-${event.id}-${i}`, name: `Dansçı ${i + 1}`, avatar });
+                        navigation.navigate('UserProfile', { userId: attendee.id, name: attendee.name, avatar: attendee.avatar });
                       }}
                       style={{ marginLeft: i === 0 ? 0 : -8 }}
                     >
-                      <Avatar source={avatar} size="sm" />
+                      <Avatar source={attendee.avatar} size="sm" />
                     </TouchableOpacity>
                   ))}
               </View>
@@ -247,7 +357,13 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => navigation.navigate('DanceStar')}
+            onPress={() =>
+              navigation.navigate('DanceStar', {
+                eventId: route.params.id,
+                eventTitle,
+                attendees: attendeeList,
+              })
+            }
             activeOpacity={0.8}
             style={[styles.dqBanner, { backgroundColor: colors.purpleAlpha, borderRadius: radius.xl, padding: spacing.lg, marginTop: spacing.lg }]}
           >
@@ -265,7 +381,7 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 { color: 'rgba(255,255,255,0.85)', lineHeight: 18 },
               ]}
             >
-              {event.description ?? `${event.title} ile unutulmaz bir dans gecesi sizi bekliyor. Canlı müzik ve harika bir atmosferde ${event.danceType ?? 'Latin'} ritimlerine kendinizi bırakın.`}
+              {eventDescription}
             </Text>
           </View>
           <View style={{ flex: 1, minHeight: 24 }} />

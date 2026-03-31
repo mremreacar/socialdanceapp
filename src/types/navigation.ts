@@ -21,12 +21,17 @@ export type MainTabsParamList = {
 
 export type MainStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabsParamList>;
+  ExploreSearch: { initialQuery?: string } | undefined;
   EventDetails: { id: string; fromFavorites?: boolean };
   SchoolDetails: { id: string };
   FavoriteSchools: undefined;
   FavoritesHub: undefined;
   ClassDetails: { id: string };
-  DanceStar: undefined;
+  DanceStar: {
+    eventId?: string;
+    eventTitle?: string;
+    attendees?: { id: string; name: string; avatar: string }[];
+  } | undefined;
   EditEvent: undefined;
   EditClass: { draftData?: any };
   ChatList: undefined;

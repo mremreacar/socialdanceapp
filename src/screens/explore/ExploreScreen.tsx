@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, RefreshControl, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -7,12 +7,13 @@ import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
 import { CollapsingHeaderScrollView } from '../../components/layout/CollapsingHeaderScrollView';
 import { EventCard } from '../../components/domain/EventCard';
+import { SchoolCard } from '../../components/domain/SchoolCard';
 import { SearchBar } from '../../components/domain/SearchBar';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
-import { mockEvents } from '../../constants/mockData';
+import { mockEvents, mockSchools } from '../../constants/mockData';
 import { MainStackParamList } from '../../types/navigation';
-import { Event } from '../../types/models';
+import { Event, School } from '../../types/models';
 import { useLocation, getDistanceKm } from '../../hooks/useLocation';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
@@ -79,6 +80,27 @@ export const ExploreScreen: React.FC = () => {
     return list;
   }, [activeFilter, searchQuery, userCoords]);
 
+  const filteredSchools = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    let list = mockSchools.filter((school) => {
+      if (!q) return true;
+      const inName = school.name.toLowerCase().includes(q);
+      const inLocation = school.location.toLowerCase().includes(q);
+      const inTags = (school.tags ?? []).some((tag) => tag.toLowerCase().includes(q));
+      return inName || inLocation || inTags;
+    });
+
+    if (userCoords && list.some((s) => s.latitude != null && s.longitude != null)) {
+      list = [...list].sort((a, b) => {
+        const distA = getDistanceKm(userCoords.latitude, userCoords.longitude, a.latitude ?? 0, a.longitude ?? 0);
+        const distB = getDistanceKm(userCoords.latitude, userCoords.longitude, b.latitude ?? 0, b.longitude ?? 0);
+        return distA - distB;
+      });
+    }
+
+    return list;
+  }, [searchQuery, userCoords]);
+
   const openDrawer = () => {
     (navigation.getParent() as any)?.openDrawer?.();
   };
@@ -99,21 +121,17 @@ export const ExploreScreen: React.FC = () => {
           <View>
             <View style={styles.searchRow}>
               <View style={{ flex: 1 }}>
-                <SearchBar
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholder="Etkinlik, mekan veya şehir ara"
-                  backgroundColor="#482347"
-                />
+                <Pressable onPress={() => navigation.navigate('ExploreSearch', { initialQuery: searchQuery })}>
+                  <View pointerEvents="none">
+                    <SearchBar
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      placeholder="Etkinlik, mekan veya şehir ara"
+                      backgroundColor="#482347"
+                    />
+                  </View>
+                </Pressable>
               </View>
-              <TouchableOpacity
-                onPress={() => setFilterSheetVisible(true)}
-                style={[styles.filterBtn, { backgroundColor: '#482347', borderRadius: radius.lg, marginLeft: spacing.md }]}
-                activeOpacity={0.8}
-              >
-                <Icon name="filter-variant" size={22} color="#FFFFFF" />
-                <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: spacing.sm }]}>Filtrele</Text>
-              </TouchableOpacity>
             </View>
           </View>
         }
@@ -130,14 +148,15 @@ export const ExploreScreen: React.FC = () => {
         }
       >
         <View style={{ marginTop: -44 }}>
-        <Text
-          style={[
-            typography.captionBold,
-            { color: colors.textSecondary, marginBottom: spacing.sm },
-          ]}
-        >
-          {filteredEvents.length} Etkinlik Bulundu
-        </Text>
+        <View style={[styles.sectionHeader, { marginBottom: spacing.sm }]}>
+          <View style={styles.sectionTitleRow}>
+            <Icon name="calendar-blank-outline" size={16} color={colors.primary} />
+            <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: 6 }]}>Etkinlikler</Text>
+          </View>
+          <View style={[styles.countPill, { backgroundColor: 'rgba(238,43,238,0.16)' }]}>
+            <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>{filteredEvents.length}</Text>
+          </View>
+        </View>
 
         {filteredEvents.length > 0 ? (
           filteredEvents.map((event) => {
@@ -149,7 +168,7 @@ export const ExploreScreen: React.FC = () => {
                   : event.location,
             };
             return (
-              <View key={event.id} style={{ marginBottom: spacing.lg }}>
+              <View key={event.id} style={{ marginBottom: spacing.md }}>
                 <EventCard
                   event={displayEvent}
                   onPress={() => navigation.navigate('EventDetails', { id: event.id })}
@@ -159,12 +178,45 @@ export const ExploreScreen: React.FC = () => {
             );
           })
         ) : (
-          <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-            <Icon name="calendar-blank-outline" size={48} color={colors.textTertiary} />
-            <Text style={[typography.bodySmall, { color: colors.textSecondary, marginTop: spacing.md }]}>
-              Bu zaman aralığında etkinlik bulunamadı.
-            </Text>
+          <View style={[styles.emptyBox, { paddingVertical: 24, borderColor: 'rgba(255,255,255,0.08)' }]}>
+            <Text style={[typography.bodySmall, { color: colors.textSecondary }]}>Bu zaman aralığında etkinlik bulunamadı.</Text>
             <Button title="Filtreleri Temizle" onPress={() => setActiveFilter('Tümü')} variant="ghost" size="sm" style={{ marginTop: spacing.md }} />
+          </View>
+        )}
+
+        <View style={[styles.sectionHeader, { marginBottom: spacing.sm, marginTop: spacing.lg }]}>
+          <View style={styles.sectionTitleRow}>
+            <Icon name="school-outline" size={16} color={colors.primary} />
+            <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: 6 }]}>Mekanlar</Text>
+          </View>
+          <View style={[styles.countPill, { backgroundColor: 'rgba(238,43,238,0.16)' }]}>
+            <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>{filteredSchools.length}</Text>
+          </View>
+        </View>
+
+        {filteredSchools.length > 0 ? (
+          filteredSchools.map((school) => {
+            const displaySchool: School = {
+              ...(school as School),
+              distance:
+                userCoords && school.latitude != null && school.longitude != null
+                  ? `${getDistanceKm(userCoords.latitude, userCoords.longitude, school.latitude, school.longitude)} km`
+                  : school.distance,
+            };
+            return (
+              <View key={school.id} style={{ marginBottom: spacing.md }}>
+                <SchoolCard
+                  school={displaySchool}
+                  onPress={() => navigation.navigate('SchoolDetails', { id: school.id })}
+                  variant="list"
+                  cardBackgroundColor="#341A32"
+                />
+              </View>
+            );
+          })
+        ) : (
+          <View style={[styles.emptyBox, { paddingVertical: 24, borderColor: 'rgba(255,255,255,0.08)' }]}>
+            <Text style={[typography.bodySmall, { color: colors.textSecondary }]}>Aramaya uygun dans okulu bulunamadı.</Text>
           </View>
         )}
         </View>
@@ -210,6 +262,29 @@ export const ExploreScreen: React.FC = () => {
 const styles = StyleSheet.create({
   searchRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
   filterBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12 },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  countPill: {
+    minWidth: 28,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyBox: {
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+  },
   sheetOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

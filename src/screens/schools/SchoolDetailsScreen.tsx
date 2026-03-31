@@ -357,6 +357,7 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                   <TouchableOpacity
                     key={e.id}
                     activeOpacity={0.8}
+                    onPress={() => navigation.navigate('EventDetails', { id: e.id })}
                     style={[styles.cardRow, { backgroundColor: '#311831', borderRadius: radius.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: spacing.lg }]}
                   >
                     <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>

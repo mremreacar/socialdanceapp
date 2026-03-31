@@ -15,6 +15,14 @@ type Nav = NativeStackNavigationProp<MainStackParamList>;
 
 type PeerRow = { id: string; name: string; avatar: string; subtitle: string };
 
+function getPeerDisplayName(peer: PeerRow): string {
+  const directName = peer.name.trim();
+  if (directName) return directName;
+  const username = peer.subtitle.replace(/^@/, '').trim();
+  if (username) return username;
+  return 'Kullanıcı';
+}
+
 export const NewChatScreen: React.FC = () => {
   const navigation = useNavigation() as Nav;
   const { spacing, colors, typography } = useTheme();
@@ -58,13 +66,16 @@ export const NewChatScreen: React.FC = () => {
     void load();
   }, [load]);
 
-  const filtered = peers.filter(
-    (u) => !search || u.name.toLowerCase().includes(search.toLowerCase()) || u.subtitle.toLowerCase().includes(search.toLowerCase()),
-  );
+  const normalizedSearch = search.trim().toLowerCase();
+  const filtered = peers.filter((u) => {
+    if (!normalizedSearch) return true;
+    const displayName = getPeerDisplayName(u).toLowerCase();
+    return displayName.includes(normalizedSearch) || u.subtitle.toLowerCase().includes(normalizedSearch);
+  });
 
   return (
     <Screen>
-      <Header title="Yeni Sohbet" showBack />
+      <Header title="Yeni Sohbet" titleColor="#FFFFFF" showBack />
       <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
         <SearchBar value={search} onChangeText={setSearch} placeholder="Kişi ara..." backgroundColor="#482347" />
       </View>
@@ -103,23 +114,41 @@ export const NewChatScreen: React.FC = () => {
           }
           ListEmptyComponent={
             <Text style={[typography.body, { color: colors.textTertiary, textAlign: 'center', marginTop: spacing.xl }]}>
-              Takip ettiğin biri yok veya liste boş. Önce profillerden takip ederek başlayabilirsin.
+              Gösterilecek kullanıcı bulunamadı.
             </Text>
           }
           renderItem={({ item }) => (
-            <UserListItem
-              name={item.name}
-              subtitle={item.subtitle}
-              avatar={item.avatar}
-              onPress={() =>
-                navigation.navigate('ChatDetail', {
-                  id: item.id,
-                  name: item.name,
-                  avatar: item.avatar,
-                  isNewChat: true,
-                })
-              }
-            />
+            (() => {
+              const displayName = getPeerDisplayName(item);
+              const username = item.subtitle.startsWith('@') ? item.subtitle.slice(1).trim() : undefined;
+              return (
+                <UserListItem
+                  name={displayName}
+                  subtitle={item.subtitle}
+                  avatar={item.avatar}
+                  nameColor="#FFFFFF"
+                  subtitleColor="rgba(255,255,255,0.75)"
+                  onPress={() =>
+                    navigation.navigate('UserProfile', {
+                      userId: item.id,
+                      name: displayName,
+                      username: username || undefined,
+                      avatar: item.avatar,
+                    })
+                  }
+                  rightLabel="Mesaj"
+                  rightVariant="primary"
+                  onRightPress={() =>
+                    navigation.navigate('ChatDetail', {
+                      id: item.id,
+                      name: displayName,
+                      avatar: item.avatar,
+                      isNewChat: true,
+                    })
+                  }
+                />
+              );
+            })()
           )}
         />
       )}

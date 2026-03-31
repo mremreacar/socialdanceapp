@@ -48,26 +48,28 @@ export const UserListItem: React.FC<UserListItemProps> = ({
   const outlineTextColor = rightButtonTextColor ?? colors.text;
 
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.7}
-      style={[styles.container, { paddingVertical: spacing.md }]}
-      disabled={!onPress}
-    >
-      <Avatar source={avatar} size="md" showOnline={showOnline} />
-      <View style={[styles.content, { marginLeft: spacing.md }]}>
-        <View style={styles.nameRow}>
-          <Text style={[typography.bodySmallBold, { color: finalNameColor, flex: 1 }]} numberOfLines={1}>{name}</Text>
-          {timestamp && (
-            <Text style={[typography.caption, { color: colors.textTertiary }]}>{timestamp}</Text>
+    <View style={[styles.container, { paddingVertical: spacing.md }]}>
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.7}
+        style={styles.mainPressArea}
+        disabled={!onPress}
+      >
+        <Avatar source={avatar} size="md" showOnline={showOnline} />
+        <View style={[styles.content, { marginLeft: spacing.md }]}>
+          <View style={styles.nameRow}>
+            <Text style={[typography.bodySmallBold, { color: finalNameColor, flex: 1 }]} numberOfLines={1}>{name}</Text>
+            {timestamp && (
+              <Text style={[typography.caption, { color: colors.textTertiary }]}>{timestamp}</Text>
+            )}
+          </View>
+          {subtitle && (
+            <Text style={[typography.caption, { color: finalSubtitleColor, marginTop: 2 }]} numberOfLines={1}>
+              {subtitle}
+            </Text>
           )}
         </View>
-        {subtitle && (
-          <Text style={[typography.caption, { color: finalSubtitleColor, marginTop: 2 }]} numberOfLines={1}>
-            {subtitle}
-          </Text>
-        )}
-      </View>
+      </TouchableOpacity>
       {rightLabel && (
         <TouchableOpacity
           onPress={onRightPress}
@@ -97,12 +99,17 @@ export const UserListItem: React.FC<UserListItemProps> = ({
       {unreadCount !== undefined && unreadCount > 0 && (
         <Badge count={unreadCount} variant="primary" size="sm" />
       )}
-    </TouchableOpacity>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mainPressArea: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
   },

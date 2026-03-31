@@ -276,6 +276,10 @@ export const profileService = {
 
       const uploadedAvatarUrl = await uploadAvatarIfNeeded(accessToken, currentAuthUser.id, updates.avatarUri);
       body.avatarUrl = uploadedAvatarUrl;
+      const normalizedUpdates: Partial<ProfileModel> = {
+        ...updates,
+        avatarUri: uploadedAvatarUrl,
+      };
 
       let nextAuthUser = currentAuthUser;
       if (body.email !== undefined && body.email.trim() !== (currentAuthUser.email ?? '').trim()) {
@@ -290,7 +294,7 @@ export const profileService = {
 
       const updatedProfileRow = await upsertProfileRow(
         accessToken,
-        buildProfileUpsert(currentAuthUser.id, currentProfileRow, updates, currentAuthUser.user_metadata),
+        buildProfileUpsert(currentAuthUser.id, currentProfileRow, normalizedUpdates, currentAuthUser.user_metadata),
       );
 
       return {

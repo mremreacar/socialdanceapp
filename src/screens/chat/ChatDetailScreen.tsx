@@ -38,10 +38,6 @@ type MessageItem = {
   time: string;
 };
 
-function isUuid(s: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
-}
-
 function rowToItem(row: DmMessageRow, myUserId: string): MessageItem {
   return {
     id: row.id,
@@ -85,11 +81,6 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     async function init() {
       if (!hasSupabaseConfig()) {
         setInitError('Supabase yapılandırması eksik.');
-        setInitLoading(false);
-        return;
-      }
-      if (!isUuid(peerId)) {
-        setInitError('Bu sohbet için geçerli bir kullanıcı kimliği gerekir.');
         setInitLoading(false);
         return;
       }
@@ -178,7 +169,7 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsMultipleSelection: true,
       quality: 0.8,
     });
@@ -261,7 +252,7 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   if (initLoading) {
     return (
       <Screen>
-        <Header title={route.params.name} showBack />
+        <Header title={route.params.name} titleColor="#FFFFFF" showBack />
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -272,16 +263,23 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   if (initError) {
     return (
       <Screen>
-        <Header title={route.params.name} showBack />
-        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: spacing.lg }}>
-          <Text style={[typography.body, { color: colors.text, textAlign: 'center' }]}>{initError}</Text>
+        <Header title={route.params.name} titleColor="#FFFFFF" showBack />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.lg }}>
+          <Text style={[typography.body, { color: '#FFFFFF', textAlign: 'center' }]}>{initError}</Text>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={{ marginTop: spacing.lg, backgroundColor: colors.primary, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.full }}
+            activeOpacity={0.85}
+          >
+            <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Geri Dön</Text>
+          </TouchableOpacity>
         </View>
       </Screen>
     );
   }
 
   return (
-    <Screen>
+    <Screen edges={['top', 'bottom']}>
       <Modal visible={sheetVisible} transparent animationType="slide" onRequestClose={closeSheet}>
         <View style={styles.sheetOverlay}>
           <TouchableOpacity style={styles.absoluteFill} activeOpacity={1} onPress={closeSheet} />
@@ -307,6 +305,7 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       </Modal>
       <Header
         title={route.params.name}
+        titleColor="#FFFFFF"
         showBack
         onTitlePress={() => setSheetVisible(true)}
         rightIcon="phone"

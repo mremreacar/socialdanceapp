@@ -8,6 +8,7 @@ interface SearchBarProps {
   onChangeText: (text: string) => void;
   placeholder?: string;
   style?: ViewStyle;
+  autoFocus?: boolean;
   /** Özel arka plan rengi (örn. #482347). Verilirse yazı/placeholder açık renk kullanılır. */
   backgroundColor?: string;
 }
@@ -17,6 +18,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   onChangeText,
   placeholder = 'Ara...',
   style,
+  autoFocus = false,
   backgroundColor: customBg,
 }) => {
   const { colors, spacing, radius, typography } = useTheme();
@@ -52,6 +54,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={placeholderColor}
+        autoFocus={autoFocus}
       />
     </View>
   );

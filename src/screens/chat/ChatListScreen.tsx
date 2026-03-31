@@ -17,6 +17,7 @@ export const ChatListScreen: React.FC = () => {
   const { spacing, colors, typography } = useTheme();
   const { chats, loading, error, refreshChats } = useChats();
   const [search, setSearch] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -28,22 +29,36 @@ export const ChatListScreen: React.FC = () => {
     (c) => !search || c.name.toLowerCase().includes(search.toLowerCase()),
   );
 
+  const handleScroll = useCallback((y: number) => {
+    // Pull-down sırasında aramayı görünür yap.
+    if (y < -24) {
+      setShowSearch(true);
+      return;
+    }
+    if (y >= 0 && !search.trim()) {
+      setShowSearch(false);
+    }
+  }, [search]);
+
   return (
     <Screen>
       <Header
         title="Mesajlar"
+        titleColor="#FFFFFF"
         showBack
         rightIcon="plus"
         onRightPress={() => navigation.navigate('NewChat')}
       />
-      <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
-        <SearchBar
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Ara..."
-          backgroundColor="#482347"
-        />
-      </View>
+      {(showSearch || search.trim().length > 0) && (
+        <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
+          <SearchBar
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Ara..."
+            backgroundColor="#482347"
+          />
+        </View>
+      )}
       {loading && chats.length === 0 ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -51,6 +66,8 @@ export const ChatListScreen: React.FC = () => {
       ) : error ? (
         <ScrollView
           contentContainerStyle={{ flexGrow: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md }}
+          onScroll={(e) => handleScroll(e.nativeEvent.contentOffset.y)}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={loading}
@@ -67,6 +84,8 @@ export const ChatListScreen: React.FC = () => {
           data={filtered}
           keyExtractor={(item) => item.conversationId}
           contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 100, flexGrow: 1 }}
+          onScroll={(e) => handleScroll(e.nativeEvent.contentOffset.y)}
+          scrollEventThrottle={16}
           alwaysBounceVertical
           overScrollMode={Platform.OS === 'android' ? 'always' : 'auto'}
           refreshControl={
