@@ -36,7 +36,9 @@ import {
   instructorWeekdayLabel,
 } from '../instructor/instructorScheduleConstants';
 import { instructorMediaService, type InstructorMediaItem } from '../../services/api/instructorMedia';
+import { messageService } from '../../services/api/messages';
 import { useDanceCatalog } from '../../hooks/useDanceCatalog';
+import { ReportUserModal } from '../../components/report/ReportUserModal';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'UserProfile'>;
 
@@ -59,7 +61,7 @@ const GALLERY_THUMB_H = 168;
 export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   const { colors, spacing, radius, typography } = useTheme();
   const { width: windowW } = useWindowDimensions();
-  const { userId, name, username, avatar, bio } = route.params;
+  const { userId, name, username, avatar, bio, conversationId: conversationIdFromChat } = route.params;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -73,6 +75,8 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
   const [followCounts, setFollowCounts] = useState({ following: 0, followers: 0 });
   const [isFollowing, setIsFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const useRemote = hasSupabaseConfig() && isLikelyUuid(userId);
 
@@ -150,6 +154,31 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
     setLoading(true);
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!useRemote || !conversationIdFromChat) {
+      setCurrentUserId(null);
+      return;
+    }
+    let cancelled = false;
+    void messageService
+      .getCurrentUserId()
+      .then((id) => {
+        if (!cancelled) setCurrentUserId(id);
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentUserId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [useRemote, conversationIdFromChat]);
+
+  const showReportFromChat =
+    !!conversationIdFromChat &&
+    useRemote &&
+    !!currentUserId &&
+    currentUserId !== userId;
 
   const onRefresh = async () => {
     if (refreshing || !useRemote) return;
@@ -258,6 +287,7 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
                   name: displayName,
                   avatar: displayAvatar,
                   isNewChat: true,
+                  ...(conversationIdFromChat ? { conversationId: conversationIdFromChat } : {}),
                 })
               }
               style={[
@@ -271,6 +301,27 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
               </View>
             </TouchableOpacity>
           </View>
+          {showReportFromChat ? (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setReportModalVisible(true)}
+              style={{
+                alignSelf: 'stretch',
+                marginTop: spacing.md,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingVertical: 12,
+                borderRadius: 50,
+                borderWidth: 1,
+                borderColor: 'rgba(248,113,113,0.45)',
+                backgroundColor: CARD_BG,
+              }}
+            >
+              <Icon name="flag-outline" size={18} color="#FCA5A5" style={{ marginRight: 8 }} />
+              <Text style={[typography.bodySmallBold, { color: '#FCA5A5' }]}>Şikayet et</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View
@@ -414,6 +465,12 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
         ) : null}
       </ScrollView>
 
+      <ReportUserModal
+        visible={reportModalVisible}
+        onRequestClose={() => setReportModalVisible(false)}
+        reportedProfileId={String(userId)}
+        conversationId={conversationIdFromChat}
+      />
       <Modal visible={!!galleryFocus} transparent animationType="fade" onRequestClose={() => setGalleryFocus(null)}>
         <View style={styles.galleryOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setGalleryFocus(null)} />

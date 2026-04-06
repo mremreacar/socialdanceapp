@@ -9,7 +9,6 @@ import {
   Platform,
   Modal,
   Alert,
-  Image,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
@@ -24,6 +23,9 @@ import { Avatar } from '../../components/ui/Avatar';
 import { MainStackParamList } from '../../types/navigation';
 import { hasSupabaseConfig } from '../../services/api/apiClient';
 import { messageService, formatMessageTime, type DmMessageRow } from '../../services/api/messages';
+import { blocksService } from '../../services/api/blocks';
+import { ReportUserModal } from '../../components/report/ReportUserModal';
+import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'ChatDetail'>;
 
@@ -61,6 +63,11 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const [initError, setInitError] = useState<string | null>(null);
   const [listRefreshing, setListRefreshing] = useState(false);
   const listRef = useRef<FlatList<MessageItem>>(null);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [confirmBlockVisible, setConfirmBlockVisible] = useState(false);
+  const [blockedInfoVisible, setBlockedInfoVisible] = useState(false);
+  const [isBlocking, setIsBlocking] = useState(false);
+  const [isPeerBlocked, setIsPeerBlocked] = useState(false);
 
   const peerId = route.params.id;
 
@@ -143,6 +150,7 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [conversationId, myUserId, loadMessages, refreshChats]);
 
   const send = async () => {
+    if (isPeerBlocked) return;
     if (!input.trim() || !conversationId) return;
     try {
       const row = await messageService.sendTextMessage(conversationId, input.trim());
@@ -160,6 +168,43 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const closeSheet = () => setSheetVisible(false);
 
+  const openReportModal = () => {
+    closeSheet();
+    setReportModalVisible(true);
+  };
+
+  const refreshBlockStatus = useCallback(async () => {
+    try {
+      const blocked = await blocksService.isUserBlockedByMe(peerId);
+      setIsPeerBlocked(blocked);
+    } catch {
+      setIsPeerBlocked(false);
+    }
+  }, [peerId]);
+
+  const submitBlockUser = async () => {
+    if (isBlocking) return;
+    setIsBlocking(true);
+    try {
+      await blocksService.blockUser(peerId);
+      setIsPeerBlocked(true);
+      setConfirmBlockVisible(false);
+      setBlockedInfoVisible(true);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Kullanıcı engellenemedi.';
+      Alert.alert('Hata', msg);
+    } finally {
+      setIsBlocking(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshBlockStatus();
+      return undefined;
+    }, [refreshBlockStatus]),
+  );
+
   const sheetActions: SheetAction[] = [
     {
       id: 'profile',
@@ -167,7 +212,12 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       icon: 'account-outline',
       onPress: () => {
         closeSheet();
-        navigation.navigate('UserProfile', { userId: route.params.id, name: route.params.name, avatar: route.params.avatar });
+        navigation.navigate('UserProfile', {
+          userId: route.params.id,
+          name: route.params.name,
+          avatar: route.params.avatar,
+          ...(conversationId ? { conversationId } : {}),
+        });
       },
     },
     {
@@ -197,17 +247,14 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       icon: 'block-helper',
       onPress: () => {
         closeSheet();
-        Alert.alert('Kullanıcı engellendi', 'Bu kullanıcıdan artık mesaj alamayacaksınız.', [{ text: 'Tamam', onPress: () => navigation.goBack() }]);
+        setConfirmBlockVisible(true);
       },
     },
     {
       id: 'report',
       label: 'Şikayet et',
       icon: 'flag-outline',
-      onPress: () => {
-        closeSheet();
-        Alert.alert('Şikayet gönderildi', 'İncelenecek ve gerekirse işlem yapılacaktır.', [{ text: 'Tamam' }]);
-      },
+      onPress: openReportModal,
     },
   ];
 
@@ -248,6 +295,37 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   return (
     <Screen edges={['top', 'bottom']}>
+      <ConfirmModal
+        visible={confirmBlockVisible}
+        title="Kullanıcıyı engelle"
+        message="Bu kullanıcı artık size mesaj gönderemez. İstediğiniz zaman Ayarlar > Engellenen Kişiler bölümünden engeli kaldırabilirsiniz."
+        cancelLabel="Vazgeç"
+        confirmLabel={isBlocking ? 'Engelleniyor...' : 'Engelle'}
+        onCancel={() => {
+          if (!isBlocking) setConfirmBlockVisible(false);
+        }}
+        onConfirm={() => {
+          void submitBlockUser();
+        }}
+      />
+      <ConfirmModal
+        visible={blockedInfoVisible}
+        title="Kullanıcı engellendi"
+        message="Bu kullanıcı artık size mesaj gönderemez. Sohbetten çıkıp güvenle devam edebilirsiniz."
+        singleButton
+        confirmLabel="Tamam"
+        onCancel={() => setBlockedInfoVisible(false)}
+        onConfirm={() => {
+          setBlockedInfoVisible(false);
+          navigation.goBack();
+        }}
+      />
+      <ReportUserModal
+        visible={reportModalVisible}
+        onRequestClose={() => setReportModalVisible(false)}
+        reportedProfileId={peerId}
+        conversationId={conversationId}
+      />
       <Modal visible={sheetVisible} transparent animationType="slide" onRequestClose={closeSheet}>
         <View style={styles.sheetOverlay}>
           <TouchableOpacity style={styles.absoluteFill} activeOpacity={1} onPress={closeSheet} />
@@ -328,20 +406,52 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         )}
         />
 
-        <View style={[styles.inputRow, { backgroundColor: colors.background, borderTopColor: colors.borderLight, padding: spacing.md }]}>
-          <TextInput
-            value={input}
-            onChangeText={setInput}
-            placeholder="Mesaj yaz..."
-            placeholderTextColor={colors.inputPlaceholder}
-            style={[styles.input, { backgroundColor: '#482347', borderRadius: radius.full, color: '#FFF' }]}
-            returnKeyType="send"
-            onSubmitEditing={send}
-          />
-          <TouchableOpacity onPress={send} style={[styles.sendBtn, { backgroundColor: colors.primary }]}>
-            <Icon name="send" size={20} color="#FFF" />
-          </TouchableOpacity>
-        </View>
+        {isPeerBlocked ? (
+          <View
+            style={[
+              styles.blockedNoteWrap,
+              {
+                backgroundColor: colors.background,
+                borderTopColor: colors.borderLight,
+                paddingHorizontal: spacing.lg,
+                paddingVertical: spacing.md,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.blockedNoteCard,
+                {
+                  borderRadius: radius.lg,
+                  borderColor: 'rgba(248,113,113,0.4)',
+                  backgroundColor: 'rgba(248,113,113,0.1)',
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.sm,
+                },
+              ]}
+            >
+              <Icon name="block-helper" size={16} color="#FCA5A5" />
+              <Text style={[typography.captionBold, { color: '#FCA5A5', marginLeft: spacing.sm, flex: 1 }]}>
+                Bu kişiyi engellediniz. Engeli kaldırmadan mesaj gönderemezsiniz.
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.inputRow, { backgroundColor: colors.background, borderTopColor: colors.borderLight, padding: spacing.md }]}>
+            <TextInput
+              value={input}
+              onChangeText={setInput}
+              placeholder="Mesaj yaz..."
+              placeholderTextColor={colors.inputPlaceholder}
+              style={[styles.input, { backgroundColor: '#482347', borderRadius: radius.full, color: '#FFF' }]}
+              returnKeyType="send"
+              onSubmitEditing={send}
+            />
+            <TouchableOpacity onPress={send} style={[styles.sendBtn, { backgroundColor: colors.primary }]}>
+              <Icon name="send" size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </Screen>
   );
@@ -356,6 +466,8 @@ const styles = {
     bottom: 0,
   },
   bubble: {},
+  blockedNoteWrap: { borderTopWidth: 1 },
+  blockedNoteCard: { flexDirection: 'row' as const, alignItems: 'center' as const, borderWidth: 1 },
   inputRow: { flexDirection: 'row' as const, alignItems: 'center' as const, borderTopWidth: 1 },
   input: { flex: 1, paddingHorizontal: 16, paddingVertical: 12 },
   sendBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center' as const, justifyContent: 'center' as const, marginLeft: 8 },

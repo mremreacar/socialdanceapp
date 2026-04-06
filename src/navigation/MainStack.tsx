@@ -22,6 +22,7 @@ import { SettingsPasswordScreen } from '../screens/social/SettingsPasswordScreen
 import { SettingsPaymentsScreen } from '../screens/social/SettingsPaymentsScreen';
 import { SettingsHelpScreen } from '../screens/social/SettingsHelpScreen';
 import { SettingsAboutScreen } from '../screens/social/SettingsAboutScreen';
+import { BlockedUsersScreen } from '../screens/social/BlockedUsersScreen';
 import { ViewUserProfileScreen } from '../screens/social/ViewUserProfileScreen';
 import { FavoriteSchoolsScreen } from '../screens/social/FavoriteSchoolsScreen';
 import { FavoritesHubScreen } from '../screens/social/FavoritesHubScreen';
@@ -54,6 +55,7 @@ export const MainStack: React.FC = () => {
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="SettingsPassword" component={SettingsPasswordScreen} />
       <Stack.Screen name="SettingsPayments" component={SettingsPaymentsScreen} />
+      <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
       <Stack.Screen name="SettingsHelp" component={SettingsHelpScreen} />
       <Stack.Screen name="SettingsAbout" component={SettingsAboutScreen} />
       <Stack.Screen name="UserProfile" component={ViewUserProfileScreen} />

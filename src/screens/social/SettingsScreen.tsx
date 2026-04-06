@@ -30,6 +30,7 @@ const settingsSections: { title: string; items: SettingsItem[] }[] = [
     items: [
       { icon: 'account', iconBg: 'primary', label: 'Kişisel Bilgiler', screen: 'EditProfile' },
       { icon: 'lock', iconBg: 'blue', label: 'Şifre ve Güvenlik', screen: 'SettingsPassword' },
+      { icon: 'block-helper', iconBg: 'orange', label: 'Engellenen Kişiler', screen: 'BlockedUsers' },
     ],
   },
   {

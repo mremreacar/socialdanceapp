@@ -52,9 +52,18 @@ export type MainStackParamList = {
   Notifications: undefined;
   SettingsPassword: undefined;
   SettingsPayments: undefined;
+  BlockedUsers: undefined;
   SettingsHelp: undefined;
   SettingsAbout: undefined;
-  UserProfile: { userId: string; name: string; username?: string; avatar: string; bio?: string };
+  UserProfile: {
+    userId: string;
+    name: string;
+    username?: string;
+    avatar: string;
+    bio?: string;
+    /** Sohbetten “Profilini gör” ile gelindiyse şikayet için sohbet id’si */
+    conversationId?: string;
+  };
   InstructorsList: undefined;
   InstructorOnboarding: undefined;
 };

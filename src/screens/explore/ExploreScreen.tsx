@@ -41,7 +41,7 @@ function schoolRowToExploreSchool(row: SchoolRow): School {
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 
 const filters = ['Tümü', 'Bugün', 'Bu Hafta', 'Bu Ay'];
-const contentTypeFilters = ['Tümü', 'Etkinlik', 'Mekan', 'Eğitmen'] as const;
+const contentTypeFilters = ['Tümü', 'Etkinlik', 'Okul', 'Eğitmen'] as const;
 const feeFilters = ['Tümü', 'Ücretli', 'Ücretsiz'] as const;
 const schoolFeeById: Record<string, number> = {
   '1': 1800,
@@ -272,7 +272,7 @@ export const ExploreScreen: React.FC = () => {
   const hasAnySearchResult = previewEvents.length > 0 || filteredSchools.length > 0 || filteredInstructors.length > 0;
 
   const showEvents = activeContentType === 'Tümü' || activeContentType === 'Etkinlik';
-  const showSchools = activeContentType === 'Tümü' || activeContentType === 'Mekan';
+  const showSchools = activeContentType === 'Tümü' || activeContentType === 'Okul';
   const showInstructors = activeContentType === 'Tümü' || activeContentType === 'Eğitmen';
   const activePriceLineIndex = priceBandOptions.findIndex((item) => item.id === activePriceBandId);
   const activeFilterCount =
@@ -310,7 +310,7 @@ export const ExploreScreen: React.FC = () => {
                 <SearchBar
                   value={searchQuery}
                   onChangeText={setSearchQuery}
-                  placeholder="Etkinlik, mekan veya şehir ara"
+                  placeholder="Etkinlik, okul veya şehir ara"
                   backgroundColor="#482347"
                   onFocus={() => setSearchFocused(true)}
                   onBlur={() => setSearchFocused(false)}
@@ -441,7 +441,7 @@ export const ExploreScreen: React.FC = () => {
           <View style={[styles.sectionHeader, { marginBottom: spacing.sm, marginTop: spacing.lg }]}>
             <View style={styles.sectionTitleRow}>
               <Icon name="school-outline" size={16} color={colors.primary} />
-              <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: 6 }]}>Mekanlar</Text>
+              <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: 6 }]}>Okullar</Text>
             </View>
             <View style={styles.sectionHeaderRight}>
               {hasMoreSchools ? (
@@ -467,7 +467,7 @@ export const ExploreScreen: React.FC = () => {
                 {isSearching ? (
                   <View style={styles.itemBadgeWrap}>
                     <View style={[styles.itemBadge, { backgroundColor: 'rgba(168,85,247,0.18)', borderColor: 'rgba(168,85,247,0.45)' }]}>
-                      <Text style={[typography.captionBold, { color: '#C084FC' }]}>Mekan</Text>
+                      <Text style={[typography.captionBold, { color: '#C084FC' }]}>Okul</Text>
                     </View>
                   </View>
                 ) : null}
