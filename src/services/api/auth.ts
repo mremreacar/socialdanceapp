@@ -23,6 +23,7 @@ function mapSupabaseUser(user?: SupabaseAuthUser | null): UserDto | undefined {
     email: typeof user.email === 'string' ? user.email : null,
     displayName: typeof metadata.displayName === 'string' ? metadata.displayName : null,
     username: typeof metadata.username === 'string' ? metadata.username : null,
+    city: typeof metadata.city === 'string' ? metadata.city : null,
     avatarUrl: typeof metadata.avatarUrl === 'string' ? metadata.avatarUrl : null,
     bio: typeof metadata.bio === 'string' ? metadata.bio : null,
     favoriteDances: Array.isArray(metadata.favoriteDances)
@@ -109,6 +110,7 @@ export const authService = {
           data: {
             displayName: input.displayName,
             username: input.username,
+            city: '',
             favoriteDances: [],
             otherInterests: '',
             bio: '',

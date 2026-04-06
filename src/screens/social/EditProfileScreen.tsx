@@ -1,6 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, TextInput, RefreshControl } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  Platform,
+  TextInput,
+  RefreshControl,
+  Keyboard,
+  LayoutChangeEvent,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme';
 import { useProfile } from '../../context/ProfileContext';
 import { Screen } from '../../components/layout/Screen';
@@ -9,7 +24,9 @@ import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import { ConfirmModal } from '../../components/feedback/ConfirmModal';
-import { Chip } from '../../components/ui/Chip';
+import { DanceStylePicker } from '../../components/domain/DanceStylePicker';
+import { CityPicker } from '../../components/domain/CityPicker';
+import { useDanceCatalog } from '../../hooks/useDanceCatalog';
 
 function isSupabasePublicAvatarUrl(uri: string | null | undefined): boolean {
   if (!uri) return false;
@@ -19,6 +36,7 @@ function isSupabasePublicAvatarUrl(uri: string | null | undefined): boolean {
 export const EditProfileScreen: React.FC = () => {
   const navigation = useNavigation();
   const { colors, spacing, typography, radius } = useTheme();
+  const insets = useSafeAreaInsets();
   const { profile, updateProfile, refreshProfile } = useProfile();
   const nameParts = profile.displayName.trim().split(/\s+/);
   const [avatarUri, setAvatarUri] = useState<string | null>(profile.avatarUri);
@@ -28,13 +46,21 @@ export const EditProfileScreen: React.FC = () => {
   const [hakkimda, setHakkimda] = useState(profile.bio);
   const [email, setEmail] = useState(profile.email);
   const [telefon, setTelefon] = useState('');
-  const [sehir, setSehir] = useState('İstanbul');
+  const [sehir, setSehir] = useState(profile.city);
   const [favoriteDances, setFavoriteDances] = useState<string[]>(profile.favoriteDances ?? []);
+  const { catalog, loading: catalogLoading, error: catalogError, reload: reloadCatalog, catalogTypeIds } = useDanceCatalog();
   const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const activeAvatarUri = avatarUri ?? profile.avatarUri;
   const shouldShowAvatarWarning = !!activeAvatarUri && !isSupabasePublicAvatarUrl(activeAvatarUri);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const fieldLayouts = useRef<Record<string, { y: number; height: number }>>({});
+  const focusedField = useRef<string | null>(null);
+  const scrollOffsetY = useRef(0);
+  const viewportHeight = useRef(0);
+  const keyboardSpacer = Platform.OS === 'android' ? keyboardHeight : 0;
 
   useEffect(() => {
     const parts = profile.displayName.trim().split(/\s+/);
@@ -44,14 +70,91 @@ export const EditProfileScreen: React.FC = () => {
     setHakkimda(profile.bio);
     setAvatarUri(profile.avatarUri);
     setEmail(profile.email);
+    setSehir(profile.city);
     setFavoriteDances(profile.favoriteDances ?? []);
-  }, [profile.displayName, profile.username, profile.bio, profile.avatarUri, profile.email, profile.favoriteDances]);
+  }, [profile.displayName, profile.username, profile.bio, profile.avatarUri, profile.email, profile.city, profile.favoriteDances]);
 
-  const DANCES = ['Salsa', 'Bachata', 'Hip-Hop', 'Tango', 'Kizomba', 'Swing', 'Zumba', 'Vals', 'Modern'] as const;
+  const scrollToField = useCallback((fieldKey: string | null, keyboardHeightOverride?: number) => {
+    if (!fieldKey) return;
+    const layout = fieldLayouts.current[fieldKey];
+    if (!layout || viewportHeight.current <= 0) return;
+    const currentKeyboardHeight = keyboardHeightOverride ?? keyboardHeight;
 
-  const toggleDance = (dance: string) => {
-    setFavoriteDances((prev) => (prev.includes(dance) ? prev.filter((d) => d !== dance) : [...prev, dance]));
+    const visibleBottom = scrollOffsetY.current + viewportHeight.current - currentKeyboardHeight - spacing.lg;
+    const fieldBottom = layout.y + layout.height;
+    const targetY = Math.max(0, layout.y - spacing.lg);
+
+    if (layout.y < scrollOffsetY.current + spacing.md) {
+      scrollRef.current?.scrollTo({ y: targetY, animated: true });
+      return;
+    }
+
+    if (fieldBottom > visibleBottom) {
+      const nextY = Math.max(0, fieldBottom - (viewportHeight.current - currentKeyboardHeight) + spacing.xl);
+      scrollRef.current?.scrollTo({ y: nextY, animated: true });
+    }
+  }, [keyboardHeight, spacing.lg, spacing.md, spacing.xl]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      const nextHeight = Math.max(0, event.endCoordinates.height - insets.bottom);
+      setKeyboardHeight(nextHeight);
+      if (focusedField.current) {
+        requestAnimationFrame(() => {
+          scrollToField(focusedField.current, nextHeight);
+        });
+      }
+    });
+
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [insets.bottom, scrollToField]);
+
+  const captureFieldLayout = useCallback(
+    (fieldKey: string) => (event: LayoutChangeEvent) => {
+      fieldLayouts.current[fieldKey] = event.nativeEvent.layout;
+    },
+    [],
+  );
+
+  const focusField = useCallback(
+    (fieldKey: string) => {
+      focusedField.current = fieldKey;
+      requestAnimationFrame(() => {
+        scrollToField(fieldKey);
+      });
+    },
+    [scrollToField],
+  );
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollOffsetY.current = event.nativeEvent.contentOffset.y;
+  }, []);
+
+  const handleViewportLayout = useCallback((event: LayoutChangeEvent) => {
+    viewportHeight.current = event.nativeEvent.layout.height;
+  }, []);
+
+  const toggleDance = (subcategoryId: string) => {
+    setFavoriteDances((prev) =>
+      prev.includes(subcategoryId) ? prev.filter((d) => d !== subcategoryId) : [...prev, subcategoryId],
+    );
   };
+
+  const removeOrphanDance = (value: string) => {
+    setFavoriteDances((prev) => prev.filter((d) => d !== value));
+  };
+
+  const orphanDanceValues = favoriteDances.filter((v) => !catalogTypeIds.has(v.trim()));
 
   const openGalleryAndSetAvatar = () => {
     setTimeout(async () => {
@@ -111,6 +214,7 @@ export const EditProfileScreen: React.FC = () => {
         avatarUri,
         bio: hakkimda.trim() || '',
         email: email.trim() || '',
+        city: sehir.trim() || '',
         favoriteDances,
       });
       navigation.goBack();
@@ -148,15 +252,19 @@ export const EditProfileScreen: React.FC = () => {
         onConfirm={() => setAlertModal(null)}
       />
       <Header title="Profili düzenle" showBack />
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      >
+      <View style={{ flex: 1 }} onLayout={handleViewportLayout}>
         <ScrollView
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          contentContainerStyle={{
+            padding: spacing.lg,
+            paddingBottom: spacing.xxl + keyboardSpacer + insets.bottom,
+          }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -202,120 +310,142 @@ export const EditProfileScreen: React.FC = () => {
             </Text>
           ) : null}
 
-          <Text style={[typography.label, { color: '#FFFFFF', marginTop: spacing.lg, marginBottom: spacing.xs }]}>Ad</Text>
-          <Input
-            value={ad}
-            onChangeText={setAd}
-            placeholder="Adınız"
-            placeholderTextColor="rgba(255,255,255,0.5)"
-            containerStyle={{ marginBottom: spacing.md }}
-            backgroundColor="#311831"
-            style={{ color: '#FFFFFF' }}
-          />
-
-          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Soyad</Text>
-          <Input
-            value={soyad}
-            onChangeText={setSoyad}
-            placeholder="Soyadınız"
-            placeholderTextColor="rgba(255,255,255,0.5)"
-            containerStyle={{ marginBottom: spacing.md }}
-            backgroundColor="#311831"
-            style={{ color: '#FFFFFF' }}
-          />
-
-          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Kullanıcı adı</Text>
-          <Input
-            value={kullaniciAdi}
-            onChangeText={setKullaniciAdi}
-            placeholder="@kullaniciadi"
-            placeholderTextColor="rgba(255,255,255,0.5)"
-            autoCapitalize="none"
-            containerStyle={{ marginBottom: spacing.md }}
-            backgroundColor="#311831"
-            style={{ color: '#FFFFFF' }}
-          />
-
-          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Hakkımda</Text>
-          <View style={{ marginBottom: spacing.md }}>
-            <TextInput
-              value={hakkimda}
-              onChangeText={setHakkimda}
-              placeholder="Kendinizi kısaca tanıtın..."
+          <View onLayout={captureFieldLayout('ad')}>
+            <Text style={[typography.label, { color: '#FFFFFF', marginTop: spacing.lg, marginBottom: spacing.xs }]}>Ad</Text>
+            <Input
+              value={ad}
+              onChangeText={setAd}
+              onFocus={() => focusField('ad')}
+              placeholder="Adınız"
               placeholderTextColor="rgba(255,255,255,0.5)"
-              multiline
-              numberOfLines={3}
-              style={[
-                typography.body,
-                {
-                  backgroundColor: '#311831',
-                  borderRadius: radius.xl,
-                  borderWidth: 1,
-                  borderColor: colors.inputBorder,
-                  paddingHorizontal: spacing.lg,
-                  paddingVertical: spacing.md,
-                  minHeight: 88,
-                  color: '#FFFFFF',
-                  textAlignVertical: 'top',
-                },
-              ]}
+              containerStyle={{ marginBottom: spacing.md }}
+              backgroundColor="#311831"
+              style={{ color: '#FFFFFF' }}
+              returnKeyType="next"
             />
           </View>
 
-          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>E-posta</Text>
-          <Input
-            value={email}
-            onChangeText={setEmail}
-            placeholder="ornek@email.com"
-            placeholderTextColor="rgba(255,255,255,0.5)"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            containerStyle={{ marginBottom: spacing.md }}
-            backgroundColor="#311831"
-            style={{ color: '#FFFFFF' }}
-          />
+          <View onLayout={captureFieldLayout('soyad')}>
+            <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Soyad</Text>
+            <Input
+              value={soyad}
+              onChangeText={setSoyad}
+              onFocus={() => focusField('soyad')}
+              placeholder="Soyadınız"
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              containerStyle={{ marginBottom: spacing.md }}
+              backgroundColor="#311831"
+              style={{ color: '#FFFFFF' }}
+              returnKeyType="next"
+            />
+          </View>
 
-          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Telefon</Text>
-          <Input
-            value={telefon}
-            onChangeText={setTelefon}
-            placeholder="5XX XXX XX XX"
-            placeholderTextColor="rgba(255,255,255,0.5)"
-            keyboardType="phone-pad"
-            containerStyle={{ marginBottom: spacing.md }}
-            backgroundColor="#311831"
-            style={{ color: '#FFFFFF' }}
-          />
+          <View onLayout={captureFieldLayout('kullaniciAdi')}>
+            <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Kullanıcı adı</Text>
+            <Input
+              value={kullaniciAdi}
+              onChangeText={setKullaniciAdi}
+              onFocus={() => focusField('kullaniciAdi')}
+              placeholder="@kullaniciadi"
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              autoCapitalize="none"
+              containerStyle={{ marginBottom: spacing.md }}
+              backgroundColor="#311831"
+              style={{ color: '#FFFFFF' }}
+              returnKeyType="next"
+            />
+          </View>
 
-          <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Şehir</Text>
-          <Input
-            value={sehir}
-            onChangeText={setSehir}
-            placeholder="Şehir"
-            placeholderTextColor="rgba(255,255,255,0.5)"
-            containerStyle={{ marginBottom: spacing.md }}
-            backgroundColor="#311831"
-            style={{ color: '#FFFFFF' }}
-          />
+          <View onLayout={captureFieldLayout('hakkimda')}>
+            <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Hakkımda</Text>
+            <View style={{ marginBottom: spacing.md }}>
+              <TextInput
+                value={hakkimda}
+                onChangeText={setHakkimda}
+                onFocus={() => focusField('hakkimda')}
+                placeholder="Kendinizi kısaca tanıtın..."
+                placeholderTextColor="rgba(255,255,255,0.5)"
+                multiline
+                numberOfLines={3}
+                style={[
+                  typography.body,
+                  {
+                    backgroundColor: '#311831',
+                    borderRadius: radius.xl,
+                    borderWidth: 1,
+                    borderColor: colors.inputBorder,
+                    paddingHorizontal: spacing.lg,
+                    paddingVertical: spacing.md,
+                    minHeight: 88,
+                    color: '#FFFFFF',
+                    textAlignVertical: 'top',
+                  },
+                ]}
+              />
+            </View>
+          </View>
+
+          <View onLayout={captureFieldLayout('email')}>
+            <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>E-posta</Text>
+            <Input
+              value={email}
+              onChangeText={setEmail}
+              onFocus={() => focusField('email')}
+              placeholder="ornek@email.com"
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              containerStyle={{ marginBottom: spacing.md }}
+              backgroundColor="#311831"
+              style={{ color: '#FFFFFF' }}
+              returnKeyType="next"
+            />
+          </View>
+
+          <View onLayout={captureFieldLayout('telefon')}>
+            <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Telefon</Text>
+            <Input
+              value={telefon}
+              onChangeText={setTelefon}
+              onFocus={() => focusField('telefon')}
+              placeholder="5XX XXX XX XX"
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              keyboardType="phone-pad"
+              containerStyle={{ marginBottom: spacing.md }}
+              backgroundColor="#311831"
+              style={{ color: '#FFFFFF' }}
+              returnKeyType="next"
+            />
+          </View>
+
+          <View onLayout={captureFieldLayout('sehir')}>
+            <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Şehir</Text>
+            <View style={{ marginBottom: spacing.md }}>
+              <CityPicker
+                value={sehir}
+                onChange={setSehir}
+                placeholder="Türkiye'de bir şehir seçin"
+              />
+            </View>
+          </View>
 
           <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Favori dans türleri</Text>
           <View style={{ marginBottom: spacing.xl }}>
-            <View style={[styles.chipGrid, { marginTop: spacing.sm }]}>
-              {DANCES.map((dance) => (
-                <Chip
-                  key={dance}
-                  label={dance}
-                  selected={favoriteDances.includes(dance)}
-                  onPress={() => toggleDance(dance)}
-                  icon={favoriteDances.includes(dance) ? 'check' : undefined}
-                />
-              ))}
-            </View>
+            <DanceStylePicker
+              catalog={catalog}
+              loading={catalogLoading}
+              error={catalogError}
+              onRetry={reloadCatalog}
+              selectedIds={favoriteDances}
+              onToggleSubcategory={toggleDance}
+              orphanValues={orphanDanceValues}
+              onRemoveOrphan={removeOrphanDance}
+            />
           </View>
 
           <Button title={saving ? 'Kaydediliyor...' : 'Kaydet'} onPress={handleSave} fullWidth size="lg" disabled={saving} />
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
     </Screen>
   );
 };
@@ -357,10 +487,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 10,
     elevation: 10,
-  },
-  chipGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
   },
 });

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Share, Modal } from 'react-native';
+import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Share, Modal, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
@@ -13,6 +13,7 @@ import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { mockEvents, mockFavoritesEvents } from '../../constants/mockData';
 import { MainStackParamList } from '../../types/navigation';
 import { scheduleEventReminder } from '../../services/notifications';
+import { ApiError } from '../../services/api/apiClient';
 import { getSchoolEventById } from '../../services/api/schoolEvents';
 import { schoolEventAttendeesService, type EventAttendee } from '../../services/api/schoolEventAttendees';
 
@@ -134,8 +135,14 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         const list = await schoolEventAttendeesService.list(route.params.id);
         setDbAttendees(list);
         setHasJoined(true);
-      } catch {
-        setJoinModalVisible(true);
+      } catch (e: unknown) {
+        const msg =
+          e instanceof ApiError
+            ? e.message
+            : e instanceof Error
+              ? e.message
+              : 'Katılım kaydedilemedi. Giriş yaptığınızdan emin olun.';
+        Alert.alert('Katılım', msg);
         return;
       }
     } else {

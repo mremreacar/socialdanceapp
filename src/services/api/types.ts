@@ -3,6 +3,7 @@ export type UserDto = {
   displayName?: string | null;
   username?: string | null;
   email?: string | null;
+  city?: string | null;
   avatarUrl?: string | null;
   bio?: string | null;
   favoriteDances?: string[] | null;
@@ -41,6 +42,7 @@ export type UpdateMeRequestDto = Partial<Pick<UserDto,
   | 'displayName'
   | 'username'
   | 'email'
+  | 'city'
   | 'avatarUrl'
   | 'bio'
   | 'favoriteDances'

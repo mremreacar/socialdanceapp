@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../theme';
@@ -12,6 +12,7 @@ import { useProfile } from '../../context/ProfileContext';
 import { cancelAllScheduledLocalNotifications } from '../../services/notifications';
 import { authService } from '../../services/api/auth';
 import { instructorProfileService } from '../../services/api/instructorProfile';
+import { useDanceCatalog } from '../../hooks/useDanceCatalog';
 import type { InstructorProfileModel } from '../../services/api/instructorProfile';
 
 type SettingsItem = {
@@ -54,7 +55,11 @@ export const SettingsScreen: React.FC = () => {
   const [location, setLocation] = useState(true);
   const [instructorProfile, setInstructorProfile] = useState<InstructorProfileModel | null | undefined>(undefined);
 
-  const favoriteDancesValue = profile.favoriteDances?.length ? profile.favoriteDances.join(', ') : '';
+  const { resolveFull } = useDanceCatalog();
+  const favoriteDancesValue = useMemo(() => {
+    const labels = resolveFull(profile.favoriteDances ?? []);
+    return labels.length ? labels.join(', ') : '';
+  }, [resolveFull, profile.favoriteDances]);
 
   useFocusEffect(
     useCallback(() => {

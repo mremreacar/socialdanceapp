@@ -9,6 +9,7 @@ export interface Profile {
   avatarUri: string | null;
   bio: string;
   email: string;
+  city: string;
   favoriteDances: string[];
   otherInterests: string;
   notificationsEnabled: boolean;
@@ -24,6 +25,7 @@ const EMPTY_PROFILE: Profile = {
   avatarUri: null,
   bio: '',
   email: '',
+  city: '',
   favoriteDances: [],
   otherInterests: '',
   notificationsEnabled: true,
@@ -36,6 +38,7 @@ function mapStoredProfileToProfile(stored: StoredProfile): Profile {
     avatarUri: stored.avatarUri,
     bio: stored.bio,
     email: stored.email ?? '',
+    city: stored.city ?? '',
     favoriteDances: stored.favoriteDances ?? [],
     otherInterests: stored.otherInterests ?? '',
     notificationsEnabled: stored.notificationsEnabled !== false,

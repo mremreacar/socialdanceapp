@@ -266,6 +266,8 @@ export const ExploreScreen: React.FC = () => {
   }, [filteredSchools]);
   const previewEvents = useMemo(() => filteredEvents.slice(0, 5), [filteredEvents]);
   const hasMoreEvents = filteredEvents.length > 5;
+  const previewSchools = useMemo(() => filteredSchools.slice(0, 5), [filteredSchools]);
+  const hasMoreSchools = filteredSchools.length > 5;
   const isSearching = searchFocused || searchQuery.trim().length > 0;
   const hasAnySearchResult = previewEvents.length > 0 || filteredSchools.length > 0 || filteredInstructors.length > 0;
 
@@ -442,15 +444,17 @@ export const ExploreScreen: React.FC = () => {
               <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: 6 }]}>Mekanlar</Text>
             </View>
             <View style={styles.sectionHeaderRight}>
-              <TouchableOpacity onPress={openSchoolsPage} activeOpacity={0.8} style={styles.viewAllButton}>
-                <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>Tümünü Gör</Text>
-              </TouchableOpacity>
+              {hasMoreSchools ? (
+                <TouchableOpacity onPress={openSchoolsPage} activeOpacity={0.8} style={styles.viewAllButton}>
+                  <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>Tümünü Gör</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
         ) : null}
 
         {filteredSchools.length > 0 ? (
-          filteredSchools.map((school) => {
+          previewSchools.map((school) => {
             const displaySchool: School = {
               ...(school as School),
               distance:

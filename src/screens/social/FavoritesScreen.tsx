@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, RefreshControl, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
@@ -8,7 +8,10 @@ import { MyEventCard } from '../../components/domain/MyEventCard';
 import { EmptyState } from '../../components/feedback/EmptyState';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../../types/navigation';
+import { ApiError, hasSupabaseConfig } from '../../services/api/apiClient';
 import { listAllSchoolEvents } from '../../services/api/schoolEvents';
+import { schoolEventAttendeesService } from '../../services/api/schoolEventAttendees';
+import { storage } from '../../services/storage';
 import type { MyEventCardData } from '../../components/domain/MyEventCard';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
@@ -18,17 +21,41 @@ export const MyEventsScreen: React.FC = () => {
   const { colors, spacing, typography } = useTheme();
   const [events, setEvents] = useState<MyEventCardData[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [favoritedIds, setFavoritedIds] = useState<Set<number>>(
-    () => new Set()
-  );
+  const [favoritedIds, setFavoritedIds] = useState<Set<string>>(() => new Set());
+  const [joinedEventIds, setJoinedEventIds] = useState<Set<string>>(() => new Set());
+  const [reservingId, setReservingId] = useState<string | null>(null);
 
-  const toggleFavorite = (id: number) => {
+  const toggleFavorite = (id: string) => {
     setFavoritedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  };
+
+  const handleReservation = async (eventId: string) => {
+    if (!hasSupabaseConfig()) {
+      Alert.alert('Bağlantı', 'Bu özellik için uygulama yapılandırması gerekir.');
+      return;
+    }
+    const token = await storage.getAccessToken();
+    if (!token) {
+      Alert.alert('Giriş gerekli', 'Rezervasyon için lütfen giriş yapın.');
+      return;
+    }
+    setReservingId(eventId);
+    try {
+      await schoolEventAttendeesService.join(eventId);
+      setJoinedEventIds((prev) => new Set(prev).add(eventId));
+      Alert.alert('Rezervasyon', 'Etkinliğe katılımınız kaydedildi.');
+    } catch (e: unknown) {
+      const msg =
+        e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Kayıt yapılamadı.';
+      Alert.alert('Rezervasyon', msg);
+    } finally {
+      setReservingId(null);
+    }
   };
 
   const loadEvents = useCallback(async () => {
@@ -60,11 +87,28 @@ export const MyEventsScreen: React.FC = () => {
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
     setEvents(mapped);
+
+    if (!hasSupabaseConfig() || mapped.length === 0) {
+      setJoinedEventIds(new Set());
+      return;
+    }
+    const token = await storage.getAccessToken();
+    if (!token) {
+      setJoinedEventIds(new Set());
+      return;
+    }
+    try {
+      const joined = await schoolEventAttendeesService.listJoinedEventIds(mapped.map((m) => String(m.id)));
+      setJoinedEventIds(new Set(joined));
+    } catch {
+      setJoinedEventIds(new Set());
+    }
   }, []);
 
   useEffect(() => {
     void loadEvents().catch(() => {
       setEvents([]);
+      setJoinedEventIds(new Set());
     });
   }, [loadEvents]);
 
@@ -74,6 +118,7 @@ export const MyEventsScreen: React.FC = () => {
     void loadEvents()
       .catch(() => {
         setEvents([]);
+        setJoinedEventIds(new Set());
       })
       .finally(() => {
         setRefreshing(false);
@@ -123,17 +168,17 @@ export const MyEventsScreen: React.FC = () => {
                   day: event.day,
                   month: event.month,
                     image: event.image ?? '',
-                  isFavorite: favoritedIds.has(event.id as number),
+                  isFavorite: favoritedIds.has(String(event.id)),
                   isPopular: event.isPopular,
                   attendees: event.attendees,
                   attendeeAvatars: event.attendeeAvatars,
                   isDanceStar: event.isDanceStar,
                 }}
                 onPress={() => navigation.navigate('EventDetails', { id: String(event.id), fromFavorites: true })}
-                onFavoritePress={() => toggleFavorite(event.id as number)}
-                onReservationPress={() =>
-                  navigation.navigate('EventDetails', { id: String(event.id), fromFavorites: true })
-                }
+                onFavoritePress={() => toggleFavorite(String(event.id))}
+                hasJoinedReservation={joinedEventIds.has(String(event.id))}
+                reservationLoading={reservingId === String(event.id)}
+                onReservationPress={() => void handleReservation(String(event.id))}
                 onAvatarPress={(index, avatarUri) =>
                   (navigation.getParent() as any)?.navigate('UserProfile', {
                     userId: `ev-${event.id}-${index}`,

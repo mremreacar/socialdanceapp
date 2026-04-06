@@ -38,14 +38,18 @@ export const Chip: React.FC<ChipProps> = ({
         style,
       ]}
     >
-      {icon && (
-        <Icon
-          name={selected ? 'check' : icon}
-          size={16}
-          color={selected ? colors.textInverse : colors.textSecondary}
-          style={{ marginRight: spacing.xs }}
-        />
-      )}
+      {(() => {
+        const displayIcon = selected ? icon ?? 'check' : icon;
+        if (!displayIcon) return null;
+        return (
+          <Icon
+            name={displayIcon}
+            size={16}
+            color={selected ? colors.textInverse : colors.textSecondary}
+            style={{ marginRight: spacing.xs }}
+          />
+        );
+      })()}
       <Text
         style={[
           styles.label,

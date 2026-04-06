@@ -88,15 +88,32 @@ export const schoolEventAttendeesService = {
   async join(eventId: string): Promise<void> {
     await withAuthorizedUserRequest(async (accessToken) => {
       const me = await getMyUserId(accessToken);
-      await supabaseRestRequest(
-        '/school_event_attendees',
-        {
-          method: 'POST',
-          accessToken,
-          headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-          body: { event_id: eventId, user_id: me },
-        },
+      const existing = await supabaseRestRequest<AttendeeRow[]>(
+        `/school_event_attendees?select=user_id&event_id=eq.${encodeURIComponent(eventId)}&user_id=eq.${encodeURIComponent(me)}&limit=1`,
+        { method: 'GET', accessToken },
       );
+      if ((existing ?? []).length > 0) return;
+      await supabaseRestRequest('/school_event_attendees', {
+        method: 'POST',
+        accessToken,
+        headers: { Prefer: 'return=minimal' },
+        body: { event_id: eventId, user_id: me },
+      });
+    });
+  },
+
+  /** Oturumdaki kullanıcının bu etkinlik id’lerinden hangilerine katıldığı (rezervasyon). */
+  async listJoinedEventIds(eventIds: string[]): Promise<string[]> {
+    const unique = [...new Set(eventIds.filter(Boolean))];
+    if (unique.length === 0) return [];
+    return await withAuthorizedUserRequest(async (accessToken) => {
+      const me = await getMyUserId(accessToken);
+      const inClause = unique.map((id) => encodeURIComponent(id)).join(',');
+      const rows = await supabaseRestRequest<{ event_id: string }[]>(
+        `/school_event_attendees?select=event_id&user_id=eq.${encodeURIComponent(me)}&event_id=in.(${inClause})`,
+        { method: 'GET', accessToken },
+      );
+      return [...new Set((rows ?? []).map((r) => r.event_id).filter(Boolean))];
     });
   },
 

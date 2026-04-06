@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../../components/layout/Screen';
 import { Button } from '../../components/ui/Button';
-import { Chip } from '../../components/ui/Chip';
+import { DanceStylePicker } from '../../components/domain/DanceStylePicker';
+import { useDanceCatalog } from '../../hooks/useDanceCatalog';
 import { Input } from '../../components/ui/Input';
 import { useTheme } from '../../theme';
 import { AuthStackParamList } from '../../types/navigation';
@@ -11,25 +12,35 @@ import { useProfile } from '../../context/ProfileContext';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Preferences'>;
 
-const DANCES = ['Salsa', 'Bachata', 'Hip-Hop', 'Tango', 'Kizomba', 'Swing', 'Zumba', 'Vals', 'Modern'] as const;
-
 export const PreferencesScreen: React.FC<Props> = ({ navigation }) => {
   const { colors, spacing, typography } = useTheme();
   const { profile, updateProfile } = useProfile();
+  const { catalog, loading: catalogLoading, error: catalogError, reload: reloadCatalog, catalogTypeIds } = useDanceCatalog();
 
   const initialSelected = useMemo(() => {
-    const existing = profile.favoriteDances?.length ? profile.favoriteDances : [];
-    return existing.length ? existing : ['Salsa'];
+    return profile.favoriteDances?.length ? profile.favoriteDances : [];
   }, [profile.favoriteDances]);
 
   const [selected, setSelected] = useState<string[]>(initialSelected);
+
+  useEffect(() => {
+    setSelected(profile.favoriteDances?.length ? profile.favoriteDances : []);
+  }, [profile.favoriteDances]);
   const [otherInterests, setOtherInterests] = useState(profile.otherInterests ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const toggleDance = (dance: string) => {
-    setSelected((prev) => (prev.includes(dance) ? prev.filter((d) => d !== dance) : [...prev, dance]));
+  const toggleDance = (subcategoryId: string) => {
+    setSelected((prev) =>
+      prev.includes(subcategoryId) ? prev.filter((d) => d !== subcategoryId) : [...prev, subcategoryId],
+    );
   };
+
+  const removeOrphanDance = (value: string) => {
+    setSelected((prev) => prev.filter((d) => d !== value));
+  };
+
+  const orphanDanceValues = selected.filter((v) => !catalogTypeIds.has(v.trim()));
 
   const handleContinue = async () => {
     if (saving) return;
@@ -71,16 +82,17 @@ export const PreferencesScreen: React.FC<Props> = ({ navigation }) => {
             Sana en uygun etkinlikleri önerebilmemiz için ilgilendiğin türleri seç.
           </Text>
 
-          <View style={[styles.chipGrid, { marginTop: spacing.xxl }]}>
-            {DANCES.map((dance) => (
-              <Chip
-                key={dance}
-                label={dance}
-                selected={selected.includes(dance)}
-                onPress={() => toggleDance(dance)}
-                icon={selected.includes(dance) ? 'check' : undefined}
-              />
-            ))}
+          <View style={{ marginTop: spacing.xxl }}>
+            <DanceStylePicker
+              catalog={catalog}
+              loading={catalogLoading}
+              error={catalogError}
+              onRetry={reloadCatalog}
+              selectedIds={selected}
+              onToggleSubcategory={toggleDance}
+              orphanValues={orphanDanceValues}
+              onRemoveOrphan={removeOrphanDance}
+            />
           </View>
 
           <View style={{ marginTop: spacing.xxxl }}>
@@ -127,12 +139,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
-  },
-  chipGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    justifyContent: 'center',
   },
   fieldLabel: {
     fontWeight: '600',

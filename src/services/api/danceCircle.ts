@@ -1,4 +1,5 @@
 import { ApiError, supabaseAuthRequest, supabaseRestRequest } from './apiClient';
+import { buildSubcategoryLabelMaps, fetchDanceCatalog, resolveFavoriteDanceLabels } from './danceCatalog';
 import { storage } from '../storage';
 
 type SupabaseUserResponse = { id: string };
@@ -101,17 +102,23 @@ export const danceCircleService = {
       );
       const votedIds = new Set((votes ?? []).map((v) => v.target_id));
 
-      const profiles = await supabaseRestRequest<ProfileRow[]>(
-        `/profiles?select=id,display_name,username,avatar_url,bio,favorite_dances,other_interests&id=neq.${encodeURIComponent(me)}&limit=${limit}`,
-        { accessToken },
-      );
+      const [profiles, catalog] = await Promise.all([
+        supabaseRestRequest<ProfileRow[]>(
+          `/profiles?select=id,display_name,username,avatar_url,bio,favorite_dances,other_interests&id=neq.${encodeURIComponent(me)}&limit=${limit}`,
+          { accessToken },
+        ),
+        fetchDanceCatalog().catch(() => []),
+      ]);
+
+      const { compactBySubId } = buildSubcategoryLabelMaps(Array.isArray(catalog) ? catalog : []);
 
       const candidates = (profiles ?? [])
         .filter((p) => !votedIds.has(p.id))
         .map((p) => {
-          const danceStyles = Array.isArray(p.favorite_dances)
+          const rawStyles = Array.isArray(p.favorite_dances)
             ? p.favorite_dances.filter((v) => typeof v === 'string' && v.trim() !== '').map((v) => v.trim())
             : [];
+          const danceStyles = resolveFavoriteDanceLabels(rawStyles, compactBySubId);
           const username = (p.username ?? '').trim();
           const displayName = (p.display_name ?? '').trim() || username || 'Kullanıcı';
           const bio = (p.bio ?? '').trim() || (p.other_interests ?? '').trim() || 'Dans içeriklerini keşfetmeyi seviyorum.';

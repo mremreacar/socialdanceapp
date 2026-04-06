@@ -45,6 +45,49 @@ async function getMyUserId(accessToken: string): Promise<string> {
 
 export type FollowCounts = { followers: number; following: number };
 
+export type FollowListUser = {
+  id: string;
+  name: string;
+  handle: string;
+  img: string;
+};
+
+type ProfileListRow = {
+  id: string;
+  display_name?: string | null;
+  username?: string | null;
+  avatar_url?: string | null;
+};
+
+function mapProfileToFollowListUser(row: ProfileListRow): FollowListUser {
+  const username = (row.username ?? '').trim();
+  const display = (row.display_name ?? '').trim();
+  return {
+    id: row.id,
+    name: display || username || 'Kullanıcı',
+    handle: username ? `@${username}` : '',
+    img: row.avatar_url ?? '',
+  };
+}
+
+async function fetchProfilesByIdsInOrder(accessToken: string, orderedIds: string[]): Promise<FollowListUser[]> {
+  const unique = [...new Set(orderedIds.filter(Boolean))];
+  if (unique.length === 0) return [];
+
+  const inList = unique.join(',');
+  const rows = await supabaseRestRequest<ProfileListRow[]>(
+    `/profiles?select=id,display_name,username,avatar_url&id=in.(${inList})`,
+    { method: 'GET', accessToken },
+  );
+  const byId = new Map((rows ?? []).map((r) => [r.id, r]));
+  return orderedIds
+    .map((id) => {
+      const row = byId.get(id);
+      return row ? mapProfileToFollowListUser(row) : null;
+    })
+    .filter((u): u is FollowListUser => u != null);
+}
+
 async function rpcFollowCounts(accessToken: string, userId: string): Promise<FollowCounts> {
   const rows = await supabaseRestRequest<Array<{ followers_count: number; following_count: number }>>(
     '/rpc/get_follow_counts',
@@ -107,6 +150,32 @@ export const followService = {
         `/follows?follower_id=eq.${encodeURIComponent(me)}&following_id=eq.${encodeURIComponent(targetUserId)}`,
         { method: 'DELETE', accessToken, headers: { Prefer: 'return=minimal' } },
       );
+    });
+  },
+
+  /** Takip ettiğim kullanıcılar (en yeni üstte). */
+  async listMyFollowing(): Promise<FollowListUser[]> {
+    return await withAuthorizedUserRequest(async (accessToken) => {
+      const me = await getMyUserId(accessToken);
+      const followRows = await supabaseRestRequest<{ following_id: string }[]>(
+        `/follows?follower_id=eq.${encodeURIComponent(me)}&select=following_id&order=created_at.desc`,
+        { method: 'GET', accessToken },
+      );
+      const orderedIds = (followRows ?? []).map((r) => r.following_id).filter(Boolean);
+      return fetchProfilesByIdsInOrder(accessToken, orderedIds);
+    });
+  },
+
+  /** Beni takip edenler (en yeni üstte). */
+  async listMyFollowers(): Promise<FollowListUser[]> {
+    return await withAuthorizedUserRequest(async (accessToken) => {
+      const me = await getMyUserId(accessToken);
+      const followRows = await supabaseRestRequest<{ follower_id: string }[]>(
+        `/follows?following_id=eq.${encodeURIComponent(me)}&select=follower_id&order=created_at.desc`,
+        { method: 'GET', accessToken },
+      );
+      const orderedIds = (followRows ?? []).map((r) => r.follower_id).filter(Boolean);
+      return fetchProfilesByIdsInOrder(accessToken, orderedIds);
     });
   },
 };

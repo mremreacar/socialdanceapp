@@ -14,6 +14,7 @@ export type ProfileModel = {
   avatarUri: string | null;
   bio: string;
   email: string;
+  city: string;
   favoriteDances: string[];
   otherInterests: string;
   notificationsEnabled: boolean;
@@ -37,6 +38,7 @@ type SupabaseProfileRow = {
   username?: string | null;
   avatar_url?: string | null;
   bio?: string | null;
+  city?: string | null;
   favorite_dances?: string[] | null;
   other_interests?: string | null;
   notifications_enabled?: boolean | null;
@@ -48,6 +50,7 @@ type SupabaseProfileUpsert = {
   username?: string | null;
   avatar_url?: string | null;
   bio?: string | null;
+  city?: string | null;
   favorite_dances?: string[];
   other_interests?: string | null;
   notifications_enabled?: boolean;
@@ -72,6 +75,7 @@ function mapSupabaseProfile(authUser: SupabaseUserResponse, row: SupabaseProfile
     username: row.username ?? null,
     avatarUrl: row.avatar_url ?? null,
     bio: row.bio ?? null,
+    city: row.city ?? null,
     favoriteDances: row.favorite_dances ?? [],
     otherInterests: row.other_interests ?? null,
     notificationsEnabled: row.notifications_enabled !== false,
@@ -85,6 +89,7 @@ function mapUserDtoToProfile(user: UserDto): ProfileModel {
     avatarUri: user.avatarUrl ?? null,
     bio: (user.bio ?? '').trim(),
     email: (user.email ?? '').trim(),
+    city: (user.city ?? '').trim(),
     favoriteDances: user.favoriteDances ?? [],
     otherInterests: (user.otherInterests ?? '').trim(),
     notificationsEnabled: user.notificationsEnabled !== false,
@@ -188,7 +193,7 @@ async function getAuthUser(accessToken: string): Promise<SupabaseUserResponse> {
 
 async function getProfileRow(accessToken: string, userId: string): Promise<SupabaseProfileRow | null> {
   const rows = await supabaseRestRequest<SupabaseProfileRow[]>(
-    `/profiles?select=id,display_name,username,avatar_url,bio,favorite_dances,other_interests,notifications_enabled&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    `/profiles?select=id,display_name,username,avatar_url,bio,city,favorite_dances,other_interests,notifications_enabled&id=eq.${encodeURIComponent(userId)}&limit=1`,
     { accessToken },
   );
 
@@ -206,6 +211,7 @@ function buildProfileUpsert(
   const username = updates.username ?? currentRow?.username ?? extractMetadataString(fallbackMetadata, 'username');
   const avatarUrl = updates.avatarUri ?? currentRow?.avatar_url ?? extractMetadataString(fallbackMetadata, 'avatarUrl');
   const bio = updates.bio ?? currentRow?.bio ?? extractMetadataString(fallbackMetadata, 'bio');
+  const city = updates.city ?? currentRow?.city ?? extractMetadataString(fallbackMetadata, 'city');
   const favoriteDances = updates.favoriteDances ?? currentRow?.favorite_dances ?? extractMetadataStringArray(fallbackMetadata, 'favoriteDances');
   const otherInterests = updates.otherInterests ?? currentRow?.other_interests ?? extractMetadataString(fallbackMetadata, 'otherInterests');
   const notificationsEnabled =
@@ -221,6 +227,7 @@ function buildProfileUpsert(
     username: username ?? '',
     avatar_url: avatarUrl ?? null,
     bio: bio ?? '',
+    city: city ?? '',
     favorite_dances: favoriteDances ?? [],
     other_interests: otherInterests ?? '',
     notifications_enabled: notificationsEnabled,
@@ -232,7 +239,7 @@ async function upsertProfileRow(
   payload: SupabaseProfileUpsert,
 ): Promise<SupabaseProfileRow> {
   const response = await supabaseRestRequest<SupabaseProfileRow | SupabaseProfileRow[]>(
-    '/profiles?select=id,display_name,username,avatar_url,bio,favorite_dances,other_interests,notifications_enabled&on_conflict=id',
+    '/profiles?select=id,display_name,username,avatar_url,bio,city,favorite_dances,other_interests,notifications_enabled&on_conflict=id',
     {
       method: 'POST',
       accessToken,
@@ -303,6 +310,7 @@ export const profileService = {
         displayName: updates.displayName,
         username: updates.username,
         email: updates.email,
+        city: updates.city,
         avatarUrl: undefined,
         bio: updates.bio,
         favoriteDances: updates.favoriteDances,
@@ -318,7 +326,7 @@ export const profileService = {
       };
 
       let nextAuthUser = currentAuthUser;
-      if (body.email !== undefined && body.email.trim() !== (currentAuthUser.email ?? '').trim()) {
+      if (typeof body.email === 'string' && body.email.trim() !== (currentAuthUser.email ?? '').trim()) {
         nextAuthUser = await supabaseAuthRequest<SupabaseUserResponse>('/user', {
           method: 'PUT',
           accessToken,

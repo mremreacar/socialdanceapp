@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,7 @@ import {
   instructorWeekdayLabel,
 } from '../instructor/instructorScheduleConstants';
 import { instructorMediaService, type InstructorMediaItem } from '../../services/api/instructorMedia';
+import { useDanceCatalog } from '../../hooks/useDanceCatalog';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'UserProfile'>;
 
@@ -83,11 +84,12 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
     (instructor?.instructorBio || publicProfile?.bio || bio || '').trim() ||
     'Bu kullanıcı henüz bir şey yazmamış.';
 
-  const danceTags = instructor?.specialties?.length
-    ? instructor.specialties
-    : publicProfile?.favoriteDances?.length
-      ? publicProfile.favoriteDances
-      : null;
+  const { resolveCompact } = useDanceCatalog();
+  const danceTags = useMemo(() => {
+    if (instructor?.specialties?.length) return instructor.specialties;
+    if (publicProfile?.favoriteDances?.length) return resolveCompact(publicProfile.favoriteDances);
+    return null;
+  }, [instructor?.specialties, publicProfile?.favoriteDances, resolveCompact]);
 
   const load = useCallback(async () => {
     if (!useRemote) {

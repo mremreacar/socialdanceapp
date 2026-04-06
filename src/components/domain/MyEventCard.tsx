@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../theme';
@@ -26,6 +26,9 @@ interface MyEventCardProps {
   onPress: () => void;
   onFavoritePress?: () => void;
   onReservationPress?: () => void;
+  /** Supabase `school_event_attendees` ile eşleşen katılım */
+  hasJoinedReservation?: boolean;
+  reservationLoading?: boolean;
   /** Avatar tıklandığında (index, avatarUri) ile çağrılır */
   onAvatarPress?: (index: number, avatarUri: string) => void;
 }
@@ -39,6 +42,8 @@ export const MyEventCard: React.FC<MyEventCardProps> = ({
   onPress,
   onFavoritePress,
   onReservationPress,
+  hasJoinedReservation = false,
+  reservationLoading = false,
   onAvatarPress,
 }) => {
   const { colors, spacing, radius, typography } = useTheme();
@@ -132,18 +137,30 @@ export const MyEventCard: React.FC<MyEventCardProps> = ({
         <TouchableOpacity
           onPress={(e) => {
             e.stopPropagation();
+            if (hasJoinedReservation || reservationLoading) return;
             onReservationPress?.();
           }}
           activeOpacity={0.9}
           style={styles.reservationBtn}
+          disabled={hasJoinedReservation || reservationLoading}
         >
           <LinearGradient
-            colors={[colors.primary, colors.purple ?? '#a855f7']}
+            colors={
+              hasJoinedReservation
+                ? ['rgba(255,255,255,0.15)', 'rgba(255,255,255,0.12)']
+                : [colors.primary, colors.purple ?? '#a855f7']
+            }
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={[styles.reservationGradient, { borderRadius: radius.lg }]}
           >
-            <Text style={[typography.bodySmallBold, { color: '#FFF' }]}>Rezervasyon Yap</Text>
+            {reservationLoading ? (
+              <ActivityIndicator color="#FFF" size="small" />
+            ) : (
+              <Text style={[typography.bodySmallBold, { color: '#FFF' }]}>
+                {hasJoinedReservation ? 'Katıldınız' : 'Rezervasyon Yap'}
+              </Text>
+            )}
           </LinearGradient>
         </TouchableOpacity>
       </View>

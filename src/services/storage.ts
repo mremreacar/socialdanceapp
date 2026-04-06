@@ -6,6 +6,7 @@ export interface StoredProfile {
   avatarUri: string | null;
   bio: string;
   email: string;
+  city?: string;
   favoriteDances?: string[];
   otherInterests?: string;
   notificationsEnabled?: boolean;
@@ -17,6 +18,7 @@ export const DEFAULT_PROFILE: StoredProfile = {
   avatarUri: null,
   bio: '',
   email: '',
+  city: '',
   favoriteDances: [],
   otherInterests: '',
   notificationsEnabled: true,
@@ -116,6 +118,7 @@ export const storage = {
       ...DEFAULT_PROFILE,
       ...v,
       email: v.email ?? '',
+      city: v.city ?? '',
       favoriteDances: v.favoriteDances ?? [],
       otherInterests: v.otherInterests ?? '',
       notificationsEnabled: v.notificationsEnabled !== false,

@@ -1,5 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, RefreshControl, Platform, Modal, ScrollView } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  RefreshControl,
+  Platform,
+  Modal,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme';
@@ -8,14 +18,14 @@ import { Screen } from '../../components/layout/Screen';
 import { CollapsingHeaderScrollView } from '../../components/layout/CollapsingHeaderScrollView';
 import { Avatar } from '../../components/ui/Avatar';
 import { TabSwitch } from '../../components/domain/TabSwitch';
+import { SearchBar } from '../../components/domain/SearchBar';
 import { UserListItem } from '../../components/domain/UserListItem';
 import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { Icon } from '../../components/ui/Icon';
-import { followService } from '../../services/api/follows';
+import { followService, type FollowListUser } from '../../services/api/follows';
 import { danceCircleService, type DancedWithPerson } from '../../services/api/danceCircle';
 import { hasSupabaseConfig } from '../../services/api/apiClient';
-
-type UserItem = { id: number; name: string; handle: string; img: string };
+import { useDanceCatalog } from '../../hooks/useDanceCatalog';
 
 const ProfileInfoRow: React.FC<{
   label: string;
@@ -49,18 +59,46 @@ export const ProfileScreen: React.FC = () => {
   const { colors, spacing, typography, radius } = useTheme();
   const insets = useSafeAreaInsets();
   const { profile, avatarSource, refreshProfile } = useProfile();
-  const [activeTab, setActiveTab] = useState<'following' | 'followers' | 'requests'>('following');
+  const [activeTab, setActiveTab] = useState<'following' | 'followers'>('following');
   const [dancedWithList, setDancedWithList] = useState<DancedWithPerson[]>([]);
-  const [unfollowedIds, setUnfollowedIds] = useState<Set<number>>(new Set());
-  const [confirmModal, setConfirmModal] = useState<{ userId: number; userName: string } | null>(null);
-  const [followingList, setFollowingList] = useState<UserItem[]>([]);
-  const [followersList, setFollowersList] = useState<UserItem[]>([]);
-  const [requestsList, setRequestsList] = useState<UserItem[]>([]);
+  const [unfollowedIds, setUnfollowedIds] = useState<Set<string>>(new Set());
+  const [confirmModal, setConfirmModal] = useState<{ userId: string; userName: string } | null>(null);
+  const [followingList, setFollowingList] = useState<FollowListUser[]>([]);
+  const [followersList, setFollowersList] = useState<FollowListUser[]>([]);
+  const [followListsLoading, setFollowListsLoading] = useState(false);
   const [followCounts, setFollowCounts] = useState<{ following: number; followers: number }>({ following: 0, followers: 0 });
   const [refreshing, setRefreshing] = useState(false);
   const [dancedModalVisible, setDancedModalVisible] = useState(false);
   const [followListModalVisible, setFollowListModalVisible] = useState(false);
+  const [followListSearchQuery, setFollowListSearchQuery] = useState('');
   const shouldShowAvatarWarning = !!profile.avatarUri && !isSupabasePublicAvatarUrl(profile.avatarUri);
+  const { resolveFull } = useDanceCatalog();
+  const favoriteDancesLabels = useMemo(
+    () => resolveFull(profile.favoriteDances ?? []),
+    [resolveFull, profile.favoriteDances],
+  );
+
+  const rawFollowListForModal = useMemo(
+    () => (activeTab === 'following' ? followingList : followersList),
+    [activeTab, followingList, followersList],
+  );
+
+  const filteredFollowList = useMemo(() => {
+    const q = followListSearchQuery.trim();
+    if (!q) return rawFollowListForModal;
+    const nq = q.toLocaleLowerCase('tr-TR');
+    return rawFollowListForModal.filter((u) => {
+      const name = u.name.toLocaleLowerCase('tr-TR');
+      const uname = (u.handle.startsWith('@') ? u.handle.slice(1) : u.handle).toLocaleLowerCase('tr-TR');
+      return name.includes(nq) || uname.includes(nq);
+    });
+  }, [rawFollowListForModal, followListSearchQuery]);
+
+  const followingIdSet = useMemo(() => new Set(followingList.map((u) => u.id)), [followingList]);
+
+  useEffect(() => {
+    if (!followListModalVisible) setFollowListSearchQuery('');
+  }, [followListModalVisible]);
 
   const openDrawer = () => (navigation.getParent() as any)?.openDrawer?.();
 
@@ -74,6 +112,28 @@ export const ProfileScreen: React.FC = () => {
       setDancedWithList(rows);
     } catch {
       setDancedWithList([]);
+    }
+  }, []);
+
+  const loadFollowLists = useCallback(async () => {
+    if (!hasSupabaseConfig()) {
+      setFollowingList([]);
+      setFollowersList([]);
+      return;
+    }
+    setFollowListsLoading(true);
+    try {
+      const [following, followers] = await Promise.all([
+        followService.listMyFollowing(),
+        followService.listMyFollowers(),
+      ]);
+      setFollowingList(following);
+      setFollowersList(followers);
+    } catch {
+      setFollowingList([]);
+      setFollowersList([]);
+    } finally {
+      setFollowListsLoading(false);
     }
   }, []);
 
@@ -106,6 +166,7 @@ export const ProfileScreen: React.FC = () => {
         refreshProfile(),
         followService.getMyFollowCounts().then((counts) => setFollowCounts({ following: counts.following, followers: counts.followers })),
         loadDancedWith(),
+        loadFollowLists(),
       ]);
     } catch {
       // ignore: UI already shows cached profile; refresh is best-effort
@@ -114,34 +175,40 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
-  const handleUnfollowPress = (userId: number, userName: string) => {
+  const handleUnfollowPress = (userId: string, userName: string) => {
     setConfirmModal({ userId, userName });
   };
 
   const handleConfirmUnfollow = () => {
-    if (confirmModal) {
-      setUnfollowedIds((prev) => new Set(prev).add(confirmModal.userId));
-      setConfirmModal(null);
-    }
+    if (!confirmModal) return;
+    const { userId } = confirmModal;
+    setConfirmModal(null);
+    void (async () => {
+      try {
+        await followService.unfollowUser(userId);
+        setUnfollowedIds((prev) => new Set(prev).add(userId));
+        setFollowCounts((c) => ({ ...c, following: Math.max(0, c.following - 1) }));
+      } catch {
+        // Sunucu hatası: sayaç ve liste bir sonraki yenilemede düzelir
+      }
+    })();
   };
 
-  const handleFollowPress = (userId: number) => {
-    setUnfollowedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(userId);
-      return next;
-    });
-  };
-
-  const handleAcceptRequest = (user: UserItem) => {
-    setRequestsList((prev) => prev.filter((u) => u.id !== user.id));
-    setFollowersList((prev) => [...prev, user]);
-  };
-
-  const getList = () => {
-    if (activeTab === 'following') return followingList;
-    if (activeTab === 'followers') return followersList;
-    return requestsList;
+  const handleFollowUser = (user: FollowListUser) => {
+    void (async () => {
+      try {
+        await followService.followUser(user.id);
+        setUnfollowedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(user.id);
+          return next;
+        });
+        setFollowingList((prev) => (prev.some((u) => u.id === user.id) ? prev : [user, ...prev]));
+        setFollowCounts((c) => ({ ...c, following: c.following + 1 }));
+      } catch {
+        // İstek başarısız
+      }
+    })();
   };
 
   const openDancedModal = () => {
@@ -152,10 +219,10 @@ export const ProfileScreen: React.FC = () => {
   const openFollowListModal = (tab: 'following' | 'followers') => {
     setActiveTab(tab);
     setFollowListModalVisible(true);
+    void loadFollowLists();
   };
 
-  const followListModalTitle =
-    activeTab === 'following' ? 'Takip edilenler' : activeTab === 'followers' ? 'Takipçiler' : 'İstekler';
+  const followListModalTitle = activeTab === 'following' ? 'Takip edilenler' : 'Takipçiler';
 
   const nameParts = profile.displayName.trim().split(/\s+/);
   const profileAd = nameParts[0] ?? '';
@@ -279,15 +346,22 @@ export const ProfileScreen: React.FC = () => {
                 tabs={[
                   { key: 'following', label: 'Takip Edilen' },
                   { key: 'followers', label: 'Takipçiler' },
-                  { key: 'requests', label: 'İstekler', badge: requestsList.length > 0 ? requestsList.length : undefined },
                 ]}
                 activeTab={activeTab}
-                onTabChange={(k) => setActiveTab(k as 'following' | 'followers' | 'requests')}
+                onTabChange={(k) => setActiveTab(k as 'following' | 'followers')}
                 containerRadius={50}
                 containerBgColor="#311831"
                 indicatorColor="#020617"
                 textColor="#9CA3AF"
                 activeTextColor="#FFFFFF"
+              />
+            </View>
+            <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.md }}>
+              <SearchBar
+                value={followListSearchQuery}
+                onChangeText={setFollowListSearchQuery}
+                placeholder="İsim veya kullanıcı adı ara..."
+                backgroundColor="#311831"
               />
             </View>
             <ScrollView
@@ -296,34 +370,45 @@ export const ProfileScreen: React.FC = () => {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator
             >
-              {getList().length > 0 ? (
-                getList().map((user: UserItem) => {
-                  const isUnfollowed = activeTab === 'following' && unfollowedIds.has(user.id);
-                  const rightLabel =
-                    activeTab === 'requests' ? 'Onayla' : isUnfollowed ? 'Takip Et' : 'Takipten Çık';
-                  const onRightPress =
-                    activeTab === 'requests'
-                      ? () => handleAcceptRequest(user)
-                      : isUnfollowed
-                        ? () => handleFollowPress(user.id)
-                        : () => handleUnfollowPress(user.id, user.name);
+              {followListsLoading ? (
+                <View style={{ paddingVertical: 48, alignItems: 'center' }}>
+                  <ActivityIndicator color={colors.primary} />
+                </View>
+              ) : rawFollowListForModal.length === 0 ? (
+                <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                  <Text style={[typography.bodySmall, { color: '#FFFFFF' }]}>Henüz kimse yok.</Text>
+                </View>
+              ) : filteredFollowList.length === 0 ? (
+                <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                  <Text style={[typography.bodySmall, { color: '#9CA3AF', textAlign: 'center' }]}>
+                    Aramanızla eşleşen kullanıcı yok.
+                  </Text>
+                </View>
+              ) : (
+                filteredFollowList.map((user: FollowListUser) => {
+                  const isEffectivelyFollowing = followingIdSet.has(user.id) && !unfollowedIds.has(user.id);
+                  const rightLabel = isEffectivelyFollowing ? 'Takipten Çık' : 'Takip Et';
+                  const onRightPress = isEffectivelyFollowing
+                    ? () => handleUnfollowPress(user.id, user.name)
+                    : () => handleFollowUser(user);
+                  const usernameParam = user.handle.startsWith('@') ? user.handle.slice(1) : user.handle;
                   return (
                     <UserListItem
                       key={user.id}
                       name={user.name}
-                      subtitle={user.handle}
+                      subtitle={user.handle || undefined}
                       avatar={user.img}
                       onPress={() => {
                         setFollowListModalVisible(false);
                         (navigation.getParent() as any)?.navigate('UserProfile', {
-                          userId: String(user.id),
+                          userId: user.id,
                           name: user.name,
-                          username: user.handle,
+                          username: usernameParam || undefined,
                           avatar: user.img,
                         });
                       }}
                       rightLabel={rightLabel}
-                      rightVariant={activeTab === 'requests' ? 'primary' : 'outline'}
+                      rightVariant="outline"
                       onRightPress={onRightPress}
                       nameColor="#FFFFFF"
                       subtitleColor="#9CA3AF"
@@ -332,10 +417,6 @@ export const ProfileScreen: React.FC = () => {
                     />
                   );
                 })
-              ) : (
-                <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-                  <Text style={[typography.bodySmall, { color: '#FFFFFF' }]}>Henüz kimse yok.</Text>
-                </View>
               )}
             </ScrollView>
           </View>
@@ -424,6 +505,7 @@ export const ProfileScreen: React.FC = () => {
             <ProfileInfoRow label="Soyad" value={profileSoyad} />
             <ProfileInfoRow label="Kullanıcı adı" value={profile.username ? `@${profile.username}` : ''} />
             <ProfileInfoRow label="E-posta" value={profile.email} />
+            <ProfileInfoRow label="Şehir" value={profile.city} />
             <ProfileInfoRow label="Hakkımda" value={profile.bio} multiline />
             {profile.otherInterests.trim() ? (
               <ProfileInfoRow label="Diğer ilgi alanları" value={profile.otherInterests} multiline />
@@ -434,10 +516,13 @@ export const ProfileScreen: React.FC = () => {
             </Text>
             {profile.favoriteDances?.length ? (
               <View style={styles.tagsRow}>
-                {profile.favoriteDances.map((dance) => (
-                  <View key={dance} style={[styles.tag, { borderColor: 'rgba(255,255,255,0.12)' }]}>
+                {favoriteDancesLabels.map((label, i) => (
+                  <View
+                    key={(profile.favoriteDances ?? [])[i] ?? `dance-${i}`}
+                    style={[styles.tag, { borderColor: 'rgba(255,255,255,0.12)' }]}
+                  >
                     <Icon name="music" size={14} color={colors.primary} style={{ marginRight: 6 }} />
-                    <Text style={[typography.captionBold, { color: '#FFFFFF' }]}>{dance}</Text>
+                    <Text style={[typography.captionBold, { color: '#FFFFFF' }]}>{label}</Text>
                   </View>
                 ))}
               </View>

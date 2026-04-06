@@ -69,6 +69,7 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       avatarUri: null,
       bio: '',
       email: email.trim(),
+      city: '',
       favoriteDances: [],
       otherInterests: '',
       notificationsEnabled: true,
