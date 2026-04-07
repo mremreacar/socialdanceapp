@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, KeyboardAvoidingView, Platform } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
 import { Header } from '../../components/layout/Header';
@@ -8,6 +8,8 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Icon } from '../../components/ui/Icon';
 import { ConfirmModal } from '../../components/feedback/ConfirmModal';
+import { hasSupabaseConfig } from '../../services/api/apiClient';
+import { instructorProfileService } from '../../services/api/instructorProfile';
 
 const formatEventDateTime = (d: Date): string => {
   const dateStr = d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -78,6 +80,8 @@ function isSameDay(a: Date | null, b: Date | null): boolean {
 export const EditClassScreen: React.FC = () => {
   const navigation = useNavigation();
   const { colors, spacing, typography, radius, borders } = useTheme();
+  const [checkingAccess, setCheckingAccess] = useState(true);
+  const [hasInstructorProfile, setHasInstructorProfile] = useState(false);
   const [mediaUris, setMediaUris] = useState<string[]>([]);
   const [eventDateTime, setEventDateTime] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -99,6 +103,30 @@ export const EditClassScreen: React.FC = () => {
   const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null);
   const timeListRef = useRef<ScrollView>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  const loadInstructorAccess = useCallback(async () => {
+    if (!hasSupabaseConfig()) {
+      setHasInstructorProfile(false);
+      setCheckingAccess(false);
+      return;
+    }
+
+    setCheckingAccess(true);
+    try {
+      const row = await instructorProfileService.getMine();
+      setHasInstructorProfile(!!row);
+    } catch {
+      setHasInstructorProfile(false);
+    } finally {
+      setCheckingAccess(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadInstructorAccess();
+    }, [loadInstructorAccess]),
+  );
 
   const validateAndSave = () => {
     const next: Record<string, string> = {};
@@ -219,14 +247,61 @@ export const EditClassScreen: React.FC = () => {
         onCancel={() => setAlertModal(null)}
         onConfirm={() => setAlertModal(null)}
       />
-      <Header title="Ders Oluştur" showBack rightIcon="check" onRightPress={validateAndSave} />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView
-          ref={scrollViewRef}
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 320 }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+      <Header
+        title="Ders Oluştur"
+        showBack
+        rightIcon={hasInstructorProfile && !checkingAccess ? 'check' : undefined}
+        onRightPress={hasInstructorProfile && !checkingAccess ? validateAndSave : undefined}
+      />
+      {checkingAccess ? (
+        <View style={[styles.centeredState, { padding: spacing.xl }]}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : !hasInstructorProfile ? (
+        <View style={[styles.centeredState, { padding: spacing.lg }]}>
+          <View
+            style={{
+              backgroundColor: '#311831',
+              borderRadius: radius.xl,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.12)',
+              padding: spacing.xl,
+              width: '100%',
+            }}
+          >
+            <View
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 26,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'rgba(255,255,255,0.06)',
+                marginBottom: spacing.md,
+              }}
+            >
+              <Icon name="lock-outline" size={28} color="#FFFFFF" />
+            </View>
+            <Text style={[typography.bodyBold, { color: '#FFFFFF' }]}>Ders oluşturmak için eğitmen paneli gerekli</Text>
+            <Text style={[typography.bodySmall, { color: '#9CA3AF', marginTop: spacing.sm }]}>
+              Tüm kullanıcılar etkinlik oluşturabilir. Ders oluşturma özelliği yalnızca eğitmen profili olan hesaplarda açıktır.
+            </Text>
+            <Button
+              title="Eğitmen paneline git"
+              onPress={() => (navigation as any).navigate('InstructorOnboarding')}
+              fullWidth
+              style={{ marginTop: spacing.lg }}
+            />
+          </View>
+        </View>
+      ) : (
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <ScrollView
+            ref={scrollViewRef}
+            contentContainerStyle={{ padding: spacing.lg, paddingBottom: 320 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
           <Input
             label="Ders adı"
             placeholder=""
@@ -566,8 +641,9 @@ export const EditClassScreen: React.FC = () => {
             required
           />
           <Button title="Kaydet" onPress={validateAndSave} fullWidth size="lg" style={{ marginTop: spacing.xxl }} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      )}
     </Screen>
   );
 };
@@ -596,6 +672,7 @@ const styles = StyleSheet.create({
   pickerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 16, minHeight: 52 },
   mediaInputBox: { borderWidth: 1 },
   mediaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12 },
+  centeredState: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   mediaThumbWrap: { position: 'relative' },
   mediaThumb: { width: 88, height: 88 },
   mediaRemoveBtn: { position: 'absolute', top: 4, right: 4, width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },

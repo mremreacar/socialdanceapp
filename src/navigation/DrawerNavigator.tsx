@@ -21,6 +21,7 @@ interface MenuItem {
 const menuItems: MenuItem[] = [
   { label: 'Keşfet', icon: 'compass-outline', route: 'Explore' },
   { label: 'Okullar', icon: 'school-outline', route: 'Schools' },
+  { label: 'Kullanıcı Paneli', icon: 'view-dashboard-outline', route: 'UserPanel' },
   { label: 'DanceStar', icon: 'crown-outline', route: 'DanceStar' },
   { label: 'DanceCircle', icon: 'human-female-dance', route: 'DanceCircle' },
   { label: 'Profil', icon: 'account-outline', route: 'Profile' },

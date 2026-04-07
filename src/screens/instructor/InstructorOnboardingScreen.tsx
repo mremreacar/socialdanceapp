@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../theme';
@@ -13,11 +14,11 @@ import { Screen } from '../../components/layout/Screen';
 import { Header } from '../../components/layout/Header';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
-import { Chip } from '../../components/ui/Chip';
 import { Toggle } from '../../components/ui/Toggle';
 import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { Icon } from '../../components/ui/Icon';
 import { hasSupabaseConfig } from '../../services/api/apiClient';
+import { useDanceCatalog } from '../../hooks/useDanceCatalog';
 import {
   instructorProfileService,
   InstructorProfileModel,
@@ -28,8 +29,6 @@ import { InstructorStudentsTab } from './InstructorStudentsTab';
 import { InstructorSchoolTab } from './InstructorSchoolTab';
 import { InstructorCalendarTab } from './InstructorCalendarTab';
 import { InstructorMediaTab } from './InstructorMediaTab';
-
-const SPECIALTIES = ['Salsa', 'Bachata', 'Tango', 'Kizomba', 'Swing', 'Zumba', 'Vals', 'Modern', 'Hip-Hop', 'Diğer'] as const;
 
 const WORK_OPTIONS: { mode: InstructorWorkMode; label: string; hint: string }[] = [
   { mode: 'individual', label: 'Bireysel', hint: 'Kendi adıma ders veriyorum' },
@@ -85,6 +84,7 @@ function LockedTabBody(props: {
 
 export const InstructorOnboardingScreen: React.FC = () => {
   const { colors, spacing, typography, radius } = useTheme();
+  const { catalog, loading: catalogLoading, error: catalogError, reload: reloadCatalog, compactBySubId } = useDanceCatalog();
   const [activeTab, setActiveTab] = useState<InstructorTabId>('profile');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -92,9 +92,10 @@ export const InstructorOnboardingScreen: React.FC = () => {
   const [workMode, setWorkMode] = useState<InstructorWorkMode>('individual');
   const [headline, setHeadline] = useState('');
   const [instructorBio, setInstructorBio] = useState('');
-  const [specialties, setSpecialties] = useState<string[]>([]);
+  const [specialtyIds, setSpecialtyIds] = useState<string[]>([]);
   const [isVisible, setIsVisible] = useState(true);
   const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null);
+  const [showSpecialtyPicker, setShowSpecialtyPicker] = useState(false);
 
   const load = useCallback(async () => {
     if (!hasSupabaseConfig()) {
@@ -110,8 +111,14 @@ export const InstructorOnboardingScreen: React.FC = () => {
         setWorkMode(row.workMode);
         setHeadline(row.headline);
         setInstructorBio(row.instructorBio);
-        setSpecialties(row.specialties);
+        setSpecialtyIds(row.specialtyIds);
         setIsVisible(row.isVisible);
+      } else {
+        setWorkMode('individual');
+        setHeadline('');
+        setInstructorBio('');
+        setSpecialtyIds([]);
+        setIsVisible(true);
       }
     } catch {
       setAlertModal({
@@ -129,9 +136,61 @@ export const InstructorOnboardingScreen: React.FC = () => {
     }, [load]),
   );
 
-  const toggleSpecialty = (d: string) => {
-    setSpecialties((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+  const existingSpecialtyLabelById = useMemo(() => {
+    const pairs = new Map<string, string>();
+    if (!existing) return pairs;
+    existing.specialtyIds.forEach((id, index) => {
+      const label = existing.specialties[index]?.trim();
+      if (id?.trim() && label) {
+        pairs.set(id.trim(), label);
+      }
+    });
+    return pairs;
+  }, [existing]);
+
+  const toggleSpecialty = (danceTypeId: string) => {
+    setSpecialtyIds((prev) =>
+      prev.includes(danceTypeId) ? prev.filter((id) => id !== danceTypeId) : [...prev, danceTypeId],
+    );
   };
+
+  const specialtyLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+
+    catalog.forEach((category) => {
+      if (category.subcategories.length > 0) {
+        category.subcategories.forEach((subcategory) => {
+          const label = subcategory.name.trim();
+          if (label) map.set(subcategory.id, label);
+        });
+        return;
+      }
+
+      const label = category.name.trim();
+      if (label) map.set(category.id, label);
+    });
+
+    specialtyIds.forEach((id) => {
+      const trimmedId = id.trim();
+      if (!trimmedId || map.has(trimmedId)) return;
+      map.set(trimmedId, existingSpecialtyLabelById.get(trimmedId) ?? compactBySubId.get(trimmedId) ?? trimmedId);
+    });
+
+    return map;
+  }, [catalog, compactBySubId, existingSpecialtyLabelById, specialtyIds]);
+
+  const specialtyOptions = useMemo(
+    () =>
+      Array.from(specialtyLabelById.entries())
+        .map(([id, label]) => ({ id, label }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'tr', { sensitivity: 'base' })),
+    [specialtyLabelById],
+  );
+
+  const selectedSpecialtyLabels = useMemo(
+    () => specialtyIds.map((id) => specialtyLabelById.get(id) ?? id).filter(Boolean),
+    [specialtyIds, specialtyLabelById],
+  );
 
   const onSave = async () => {
     if (!hasSupabaseConfig()) {
@@ -152,7 +211,7 @@ export const InstructorOnboardingScreen: React.FC = () => {
         workMode,
         headline,
         instructorBio,
-        specialties,
+        specialtyIds,
         isVisible,
       });
       setExisting(updated);
@@ -220,13 +279,112 @@ export const InstructorOnboardingScreen: React.FC = () => {
           />
 
           <Text style={[typography.label, { color: '#FFFFFF', marginTop: spacing.lg, marginBottom: spacing.sm }]}>Branşlar</Text>
-          <View style={styles.chipWrap}>
-            {SPECIALTIES.map((d) => (
-              <View key={d} style={{ marginRight: spacing.sm, marginBottom: spacing.sm }}>
-                <Chip label={d} selected={specialties.includes(d)} onPress={() => toggleSpecialty(d)} />
-              </View>
-            ))}
-          </View>
+          {catalogLoading ? (
+            <View style={[styles.centerRow, { marginTop: spacing.xs, marginBottom: spacing.sm }]}>
+              <ActivityIndicator color={colors.primary} size="small" />
+              <Text style={[typography.caption, { color: colors.textSecondary, marginLeft: spacing.sm }]}>
+                Dans türleri yükleniyor…
+              </Text>
+            </View>
+          ) : catalogError ? (
+            <View style={{ marginBottom: spacing.sm }}>
+              <Text style={[typography.caption, { color: colors.error }]}>{catalogError}</Text>
+              <TouchableOpacity onPress={reloadCatalog} activeOpacity={0.8} style={{ marginTop: spacing.xs }}>
+                <Text style={[typography.captionBold, { color: colors.primary }]}>Tekrar dene</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <TouchableOpacity
+                onPress={() => setShowSpecialtyPicker(true)}
+                activeOpacity={0.85}
+                style={[
+                  styles.selectBox,
+                  {
+                    backgroundColor: '#311831',
+                    borderRadius: radius.xl,
+                    borderColor: colors.inputBorder,
+                    paddingHorizontal: spacing.lg,
+                    paddingVertical: spacing.md,
+                  },
+                ]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[typography.captionBold, { color: colors.textTertiary, marginBottom: 2 }]}>
+                    Dans türleri seç
+                  </Text>
+                  <Text style={[typography.bodySmall, { color: '#FFFFFF' }]} numberOfLines={2}>
+                    {selectedSpecialtyLabels.length ? selectedSpecialtyLabels.join(', ') : 'Branş seçin'}
+                  </Text>
+                </View>
+                <Icon name="chevron-down" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+
+              <Modal
+                visible={showSpecialtyPicker}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowSpecialtyPicker(false)}
+              >
+                <View style={styles.modalOverlay}>
+                  <TouchableOpacity
+                    activeOpacity={1}
+                    style={StyleSheet.absoluteFill}
+                    onPress={() => setShowSpecialtyPicker(false)}
+                  />
+                  <View
+                    style={[
+                      styles.pickerSheet,
+                      {
+                        backgroundColor: '#1B1022',
+                        borderRadius: radius.xl,
+                        borderColor: colors.cardBorder,
+                        padding: spacing.lg,
+                      },
+                    ]}
+                  >
+                    <View style={styles.pickerHeader}>
+                      <Text style={[typography.bodyBold, { color: '#FFFFFF' }]}>Branş seçin</Text>
+                      <TouchableOpacity onPress={() => setShowSpecialtyPicker(false)} hitSlop={12}>
+                        <Icon name="close" size={20} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </View>
+
+                    <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+                      {specialtyOptions.map((option) => {
+                        const selected = specialtyIds.includes(option.id);
+                        return (
+                          <TouchableOpacity
+                            key={option.id}
+                            activeOpacity={0.85}
+                            onPress={() => toggleSpecialty(option.id)}
+                            style={[
+                              styles.pickerRow,
+                              {
+                                backgroundColor: selected ? 'rgba(255,255,255,0.12)' : 'transparent',
+                                borderBottomColor: 'rgba(255,255,255,0.08)',
+                              },
+                            ]}
+                          >
+                            <Text style={[typography.bodySmall, { color: '#FFFFFF', flex: 1 }]}>{option.label}</Text>
+                            <Icon
+                              name={selected ? 'check-circle' : 'checkbox-blank-circle-outline'}
+                              size={20}
+                              color={selected ? colors.primary : '#9CA3AF'}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+
+                    <View style={{ marginTop: spacing.md }}>
+                      <Button title="Tamam" onPress={() => setShowSpecialtyPicker(false)} fullWidth />
+                    </View>
+                  </View>
+                </View>
+              </Modal>
+            </>
+          )}
 
           <View
             style={{
@@ -368,7 +526,33 @@ export const InstructorOnboardingScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  chipWrap: { flexDirection: 'row', flexWrap: 'wrap' },
+  centerRow: { flexDirection: 'row', alignItems: 'center' },
+  selectBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  pickerSheet: {
+    borderWidth: 1,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   tabBar: {
     borderBottomWidth: StyleSheet.hairlineWidth,
   },

@@ -18,6 +18,12 @@ import { useLocation, getDistanceKm } from '../../hooks/useLocation';
 import { listAllSchoolEvents } from '../../services/api/schoolEvents';
 import { hasSupabaseConfig } from '../../services/api/apiClient';
 import { cardRowsFromExploreInstructors, instructorProfileService } from '../../services/api/instructorProfile';
+import {
+  formatLessonPrice,
+  formatLessonStartsAt,
+  instructorLessonsService,
+  type PublishedInstructorLessonListItem,
+} from '../../services/api/instructorLessons';
 import { listSchools, type SchoolRow } from '../../services/api/schools';
 
 function schoolRowToExploreSchool(row: SchoolRow): School {
@@ -41,7 +47,7 @@ function schoolRowToExploreSchool(row: SchoolRow): School {
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 
 const filters = ['Tümü', 'Bugün', 'Bu Hafta', 'Bu Ay'];
-const contentTypeFilters = ['Tümü', 'Etkinlik', 'Okul', 'Eğitmen'] as const;
+const contentTypeFilters = ['Tümü', 'Etkinlik', 'Ders', 'Okul', 'Eğitmen'] as const;
 const feeFilters = ['Tümü', 'Ücretli', 'Ücretsiz'] as const;
 const schoolFeeById: Record<string, number> = {
   '1': 1800,
@@ -67,6 +73,31 @@ function parsePriceValue(priceText?: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function formatEventPriceLabel(amount: unknown, currency?: string | null): string {
+  const value = toFiniteNumber(amount);
+  if (value == null || value <= 0) return 'Ücretsiz';
+
+  const normalizedCurrency = (currency ?? 'TRY').trim().toUpperCase() || 'TRY';
+  try {
+    return new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: normalizedCurrency,
+      maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    }).format(value);
+  } catch {
+    return `${value} ${normalizedCurrency}`;
+  }
+}
+
 function formatEventDateLabel(date: Date): string {
   return date.toLocaleString('tr-TR', {
     weekday: 'long',
@@ -90,6 +121,7 @@ export const ExploreScreen: React.FC = () => {
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
+  const [publishedLessons, setPublishedLessons] = useState<PublishedInstructorLessonListItem[]>([]);
   const [exploreInstructors, setExploreInstructors] = useState<Awaited<
     ReturnType<typeof instructorProfileService.listVisibleForExplore>
   >>([]);
@@ -103,13 +135,14 @@ export const ExploreScreen: React.FC = () => {
       ? listSchools({ limit: 200 }).catch(() => [] as SchoolRow[])
       : Promise.resolve([] as SchoolRow[]);
 
-    const [rows, instructors, schoolRows] = await Promise.all([
+    const [rows, lessons, instructors, schoolRows] = await Promise.all([
       listAllSchoolEvents(100),
+      instructorLessonsService.listPublished(100).catch(() => [] as PublishedInstructorLessonListItem[]),
       instructorProfileService.listVisibleForExplore(),
       schoolPromise,
     ]);
-    const mapped: Event[] = rows
-      .map((row) => {
+    const mapped = rows
+      .map<Event | null>((row) => {
         const startsAt = new Date(row.starts_at);
         if (Number.isNaN(startsAt.getTime())) return null;
         return {
@@ -118,14 +151,15 @@ export const ExploreScreen: React.FC = () => {
           date: formatEventDateLabel(startsAt),
           time: startsAt.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
           location: row.location?.trim() || 'Konum yakında açıklanacak',
-          image: row.image_url?.trim() || `https://picsum.photos/seed/event-${encodeURIComponent(row.id)}/400/280`,
+          image: row.image_url?.trim() || '',
           description: row.description?.trim() || '',
           rawDate: startsAt,
-          price: 'Ücretsiz',
+          price: formatEventPriceLabel(row.price_amount, row.price_currency),
         } satisfies Event;
       })
       .filter((item): item is Event => item !== null);
     setEvents(mapped);
+    setPublishedLessons(lessons);
     setExploreInstructors(instructors);
     setExploreSchools(schoolRows.map(schoolRowToExploreSchool));
   }, []);
@@ -133,6 +167,7 @@ export const ExploreScreen: React.FC = () => {
   useEffect(() => {
     void loadExploreData().catch(() => {
       setEvents([]);
+      setPublishedLessons([]);
       setExploreInstructors([]);
       setExploreSchools([]);
     });
@@ -143,6 +178,7 @@ export const ExploreScreen: React.FC = () => {
     void loadExploreData()
       .catch(() => {
         setEvents([]);
+        setPublishedLessons([]);
         setExploreInstructors([]);
         setExploreSchools([]);
       })
@@ -231,6 +267,30 @@ export const ExploreScreen: React.FC = () => {
     return list;
   }, [searchQuery, userCoords, exploreSchools]);
 
+  const filteredLessons = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return publishedLessons.filter((lesson) => {
+      if (!q) return true;
+      const haystack = [
+        lesson.title,
+        lesson.location,
+        lesson.address,
+        lesson.city,
+        lesson.level,
+        lesson.description,
+        lesson.instructorName,
+        lesson.instructorUsername,
+        lesson.schoolName,
+        lesson.schoolCity,
+        lesson.schoolDistrict,
+        lesson.scheduleSummary,
+      ]
+        .map((value) => (value ?? '').trim().toLowerCase())
+        .filter(Boolean);
+      return haystack.some((value) => value.includes(q));
+    });
+  }, [publishedLessons, searchQuery]);
+
   const instructorRowsForUi = useMemo(() => {
     if (hasSupabaseConfig()) {
       return cardRowsFromExploreInstructors(exploreInstructors);
@@ -266,12 +326,16 @@ export const ExploreScreen: React.FC = () => {
   }, [filteredSchools]);
   const previewEvents = useMemo(() => filteredEvents.slice(0, 5), [filteredEvents]);
   const hasMoreEvents = filteredEvents.length > 5;
+  const previewLessons = useMemo(() => filteredLessons.slice(0, 5), [filteredLessons]);
+  const hasMoreLessons = filteredLessons.length > 5;
   const previewSchools = useMemo(() => filteredSchools.slice(0, 5), [filteredSchools]);
   const hasMoreSchools = filteredSchools.length > 5;
   const isSearching = searchFocused || searchQuery.trim().length > 0;
-  const hasAnySearchResult = previewEvents.length > 0 || filteredSchools.length > 0 || filteredInstructors.length > 0;
+  const hasAnySearchResult =
+    previewEvents.length > 0 || previewLessons.length > 0 || filteredSchools.length > 0 || filteredInstructors.length > 0;
 
   const showEvents = activeContentType === 'Tümü' || activeContentType === 'Etkinlik';
+  const showLessons = activeContentType === 'Tümü' || activeContentType === 'Ders';
   const showSchools = activeContentType === 'Tümü' || activeContentType === 'Okul';
   const showInstructors = activeContentType === 'Tümü' || activeContentType === 'Eğitmen';
   const activePriceLineIndex = priceBandOptions.findIndex((item) => item.id === activePriceBandId);
@@ -310,7 +374,7 @@ export const ExploreScreen: React.FC = () => {
                 <SearchBar
                   value={searchQuery}
                   onChangeText={setSearchQuery}
-                  placeholder="Etkinlik, okul veya şehir ara"
+                  placeholder="Etkinlik, ders, eğitmen veya okul ara"
                   backgroundColor="#482347"
                   onFocus={() => setSearchFocused(true)}
                   onBlur={() => setSearchFocused(false)}
@@ -429,6 +493,69 @@ export const ExploreScreen: React.FC = () => {
             <View style={[styles.emptyBox, { paddingVertical: 24, borderColor: 'rgba(255,255,255,0.08)' }]}>
               <Text style={[typography.bodySmall, { color: colors.textSecondary }]}>Bu zaman aralığında etkinlik bulunamadı.</Text>
               <Button title="Filtreleri Temizle" onPress={() => setActiveFilter('Tümü')} variant="ghost" size="sm" style={{ marginTop: spacing.md }} />
+            </View>
+          ) : null
+        )}
+        </>
+        )}
+
+        {showLessons && (
+        <>
+        {!isSearching ? (
+          <View style={[styles.sectionHeader, { marginBottom: spacing.sm, marginTop: spacing.lg }]}>
+            <View style={styles.sectionTitleRow}>
+              <Icon name="book-open-page-variant-outline" size={16} color={colors.primary} />
+              <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: 6 }]}>Dersler</Text>
+            </View>
+            <View style={styles.sectionHeaderRight}>
+              {hasMoreLessons ? (
+                <TouchableOpacity onPress={openAllEventsPage} activeOpacity={0.8} style={styles.viewAllButton}>
+                  <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>Tümünü Gör</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
+        {filteredLessons.length > 0 ? (
+          <>
+            {previewLessons.map((lesson) => {
+              const displayLesson: Event = {
+                id: lesson.id,
+                title: lesson.title?.trim() || 'Ders',
+                date: formatLessonStartsAt(lesson.nextOccurrenceAt) || 'Tarih yakında açıklanacak',
+                time: '',
+                location:
+                  [lesson.location?.trim(), lesson.address?.trim(), lesson.city?.trim(), lesson.schoolName?.trim()]
+                    .filter(Boolean)
+                    .join(' · ') || 'Konum yakında açıklanacak',
+                image: lesson.imageUrl?.trim() || '',
+                description: lesson.description?.trim() || '',
+                price: formatLessonPrice(lesson),
+              };
+
+              return (
+                <View key={lesson.id} style={{ marginBottom: spacing.md }}>
+                  {isSearching ? (
+                    <View style={styles.itemBadgeWrap}>
+                      <View style={[styles.itemBadge, { backgroundColor: 'rgba(16,185,129,0.18)', borderColor: 'rgba(16,185,129,0.45)' }]}>
+                        <Text style={[typography.captionBold, { color: '#6EE7B7' }]}>Ders</Text>
+                      </View>
+                    </View>
+                  ) : null}
+                  <EventCard
+                    event={displayLesson}
+                    onPress={() => navigation.navigate('ClassDetails', { id: lesson.id })}
+                    cardBackgroundColor="#341A32"
+                  />
+                </View>
+              );
+            })}
+          </>
+        ) : (
+          !isSearching ? (
+            <View style={[styles.emptyBox, { paddingVertical: 24, borderColor: 'rgba(255,255,255,0.08)' }]}>
+              <Text style={[typography.bodySmall, { color: colors.textSecondary }]}>Aramaya uygun ders bulunamadı.</Text>
             </View>
           ) : null
         )}

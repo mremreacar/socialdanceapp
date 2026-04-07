@@ -31,7 +31,7 @@ export type MainStackParamList = {
     eventTitle?: string;
     attendees?: { id: string; name: string; avatar: string }[];
   } | undefined;
-  EditEvent: undefined;
+  EditEvent: { eventId?: string } | undefined;
   EditClass: { draftData?: any };
   ChatList: undefined;
   ChatDetail: {
@@ -52,6 +52,7 @@ export type MainStackParamList = {
   Notifications: undefined;
   SettingsPassword: undefined;
   SettingsPayments: undefined;
+  SettingsReservations: undefined;
   BlockedUsers: undefined;
   SettingsHelp: undefined;
   SettingsAbout: undefined;
@@ -64,6 +65,7 @@ export type MainStackParamList = {
     /** Sohbetten “Profilini gör” ile gelindiyse şikayet için sohbet id’si */
     conversationId?: string;
   };
+  UserPanel: undefined;
   InstructorsList: undefined;
   InstructorOnboarding: undefined;
 };

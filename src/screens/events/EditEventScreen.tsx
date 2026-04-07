@@ -1,6 +1,7 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, KeyboardAvoidingView, Platform } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { RouteProp, useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
 import { Header } from '../../components/layout/Header';
@@ -8,6 +9,12 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Icon } from '../../components/ui/Icon';
 import { ConfirmModal } from '../../components/feedback/ConfirmModal';
+import { useDanceCatalog } from '../../hooks/useDanceCatalog';
+import { hasSupabaseConfig } from '../../services/api/apiClient';
+import { instructorProfileService } from '../../services/api/instructorProfile';
+import { listSchools, type SchoolRow } from '../../services/api/schools';
+import { createSchoolEvent, creatorSchoolEventsService } from '../../services/api/schoolEvents';
+import { MainStackParamList } from '../../types/navigation';
 
 const formatEventDateTime = (d: Date): string => {
   const dateStr = d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -86,46 +93,241 @@ function isSameDay(a: Date | null, b: Date | null): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-const DANCE_TYPES = ['Salsa', 'Bachata', 'Tango', 'Kizomba', 'Zumba', 'Latin', 'Cha-Cha', 'Rumba', 'Samba', 'Merengue', 'Diğer'];
+function parseParticipantLimit(raw: string): number | null {
+  const digits = raw.replace(/[^\d]/g, '');
+  if (!digits) return null;
+  const value = Number.parseInt(digits, 10);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function parseTicketPrice(raw: string): number | null {
+  const normalized = raw.replace(',', '.').replace(/[^\d.]/g, '');
+  if (!normalized) return null;
+  const value = Number.parseFloat(normalized);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+const EVENT_TYPE_OPTIONS = [
+  { value: 'event' as const, label: 'Etkinlik', hint: 'Parti, sosyal, workshop veya festival gibi kayıtlar için.' },
+  { value: 'lesson' as const, label: 'Ders', hint: 'Yalnızca eğitmen profili olan hesaplar için.' },
+];
+
+type Nav = NativeStackNavigationProp<MainStackParamList>;
+type EditEventRoute = RouteProp<MainStackParamList, 'EditEvent'>;
 
 export const EditEventScreen: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<Nav>();
+  const route = useRoute<EditEventRoute>();
   const { colors, spacing, typography, radius, borders } = useTheme();
+  const eventId = route.params?.eventId;
+  const isEditing = !!eventId;
+  const {
+    catalog,
+    loading: danceCatalogLoading,
+    error: danceCatalogError,
+    reload: reloadDanceCatalog,
+    compactBySubId,
+  } = useDanceCatalog();
   const [mediaUris, setMediaUris] = useState<string[]>([]);
+  const [schools, setSchools] = useState<SchoolRow[]>([]);
+  const [schoolsLoading, setSchoolsLoading] = useState(true);
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
+  const [showSchoolPicker, setShowSchoolPicker] = useState(false);
   const [eventDateTime, setEventDateTime] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState<Date | null>(null);
   const [tempTime, setTempTime] = useState<Date | null>(null);
   const [viewMonth, setViewMonth] = useState(() => new Date());
   const [locationAddress, setLocationAddress] = useState<string | null>(null);
+  const [locationCity, setLocationCity] = useState<string | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
-  const [selectedDanceType, setSelectedDanceType] = useState<string | null>(null);
+  const [hasInstructorProfile, setHasInstructorProfile] = useState(false);
+  const [selectedEventType, setSelectedEventType] = useState<'event' | 'lesson'>('event');
+  const [showEventTypePicker, setShowEventTypePicker] = useState(false);
+  const [selectedDanceTypeId, setSelectedDanceTypeId] = useState<string | null>(null);
   const [showDancePicker, setShowDancePicker] = useState(false);
   const [eventName, setEventName] = useState('');
   const [description, setDescription] = useState('');
   const [participantLimit, setParticipantLimit] = useState('');
   const [ticketPrice, setTicketPrice] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null);
+  const [initialLoading, setInitialLoading] = useState(isEditing);
+  const [saving, setSaving] = useState(false);
+  const [alertModal, setAlertModal] = useState<{ title: string; message: string; goBackOnClose?: boolean } | null>(null);
   const timeListRef = useRef<ScrollView>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const selectedSchool = useMemo(
+    () => schools.find((school) => school.id === selectedSchoolId) ?? null,
+    [schools, selectedSchoolId],
+  );
+  const selectedEventTypeMeta = useMemo(
+    () => EVENT_TYPE_OPTIONS.find((option) => option.value === selectedEventType) ?? EVENT_TYPE_OPTIONS[0],
+    [selectedEventType],
+  );
+  const danceSections = useMemo(
+    () =>
+      catalog.map((category) => ({
+        categoryId: category.id,
+        categoryName: category.name,
+        options:
+          category.subcategories.length > 0
+            ? category.subcategories.map((sub) => ({ id: sub.id, name: sub.name }))
+            : [{ id: category.id, name: category.name }],
+      })),
+    [catalog],
+  );
+  const selectedDanceTypeLabel = selectedDanceTypeId ? compactBySubId.get(selectedDanceTypeId) ?? '' : '';
+  const screenTitle = isEditing ? 'Etkinlik Düzenle' : 'Etkinlik Oluştur';
+  const submitLabel = isEditing ? 'Güncelle' : 'Yayınla';
 
-  const validateAndPublish = () => {
+  const loadInstructorAccess = useCallback(async () => {
+    if (!hasSupabaseConfig()) {
+      setHasInstructorProfile(false);
+      setSelectedEventType((prev) => (prev === 'lesson' ? 'event' : prev));
+      return;
+    }
+
+    try {
+      const row = await instructorProfileService.getMine();
+      const allowed = !!row;
+      setHasInstructorProfile(allowed);
+      if (!allowed) {
+        setSelectedEventType((prev) => (isEditing && prev === 'lesson' ? prev : 'event'));
+      }
+    } catch {
+      setHasInstructorProfile(false);
+      setSelectedEventType((prev) => (isEditing && prev === 'lesson' ? prev : 'event'));
+    }
+  }, [isEditing]);
+
+  const loadEditableEvent = useCallback(async () => {
+    if (!eventId) {
+      setInitialLoading(false);
+      return;
+    }
+
+    setInitialLoading(true);
+    try {
+      const row = await creatorSchoolEventsService.getMineById(eventId);
+      if (!row) {
+        setAlertModal({
+          title: 'Etkinlik bulunamadı',
+          message: 'Bu etkinlik artık mevcut değil veya düzenleme yetkiniz bulunmuyor.',
+          goBackOnClose: true,
+        });
+        return;
+      }
+
+      setSelectedSchoolId(row.school_id ?? null);
+      setEventName(row.title?.trim() || '');
+      setSelectedEventType(row.event_type === 'lesson' ? 'lesson' : 'event');
+      setDescription(row.description?.trim() || '');
+      setLocationAddress(row.location?.trim() || null);
+      setLocationCity(row.city?.trim() || null);
+      setParticipantLimit(
+        typeof row.participant_limit === 'number' && row.participant_limit > 0 ? String(row.participant_limit) : '',
+      );
+      setTicketPrice(
+        row.price_amount != null && String(row.price_amount).trim() ? String(row.price_amount).trim() : '',
+      );
+      setSelectedDanceTypeId(row.dance_type_ids[0] ?? null);
+      setEventDateTime(row.starts_at ? new Date(row.starts_at) : null);
+      setErrors({});
+    } catch (error) {
+      setAlertModal({
+        title: 'Etkinlik yüklenemedi',
+        message: error instanceof Error ? error.message : 'Lütfen tekrar deneyin.',
+        goBackOnClose: true,
+      });
+    } finally {
+      setInitialLoading(false);
+    }
+  }, [eventId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadInstructorAccess();
+    }, [loadInstructorAccess]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadEditableEvent();
+    }, [loadEditableEvent]),
+  );
+
+  const validateAndPublish = useCallback(async () => {
+    const parsedParticipantLimit = parseParticipantLimit(participantLimit);
+    const parsedTicketPrice = parseTicketPrice(ticketPrice);
     const next: Record<string, string> = {};
     if (!eventName.trim()) next.eventName = 'Etkinlik adı zorunludur';
     if (!description.trim()) next.description = 'Açıklama zorunludur';
     if (!eventDateTime) next.dateTime = 'Tarih ve saat seçiniz';
     if (!locationAddress) next.location = 'Konum seçiniz';
-    if (!selectedDanceType) next.danceType = 'Dans türü seçiniz';
+    if (!selectedDanceTypeId) next.danceType = 'Dans türü seçiniz';
     if (!participantLimit.trim()) next.participantLimit = 'Katılımcı limiti zorunludur';
+    else if (parsedParticipantLimit == null) next.participantLimit = 'Geçerli bir katılımcı limiti giriniz';
     if (!ticketPrice.trim()) next.ticketPrice = 'Bilet fiyatı zorunludur';
+    else if (parsedTicketPrice == null) next.ticketPrice = 'Geçerli bir bilet fiyatı giriniz';
     setErrors(next);
     if (Object.keys(next).length > 0) {
       setAlertModal({ title: 'Eksik Bilgi', message: 'Lütfen tüm zorunlu alanları doldurun.' });
       return;
     }
-    navigation.goBack();
-  };
+
+    if (selectedEventType === 'lesson' && !hasInstructorProfile) {
+      setAlertModal({
+        title: 'Erişim gerekli',
+        message: 'Ders oluşturmak için önce eğitmen profili oluşturmanız gerekiyor.',
+      });
+      return;
+    }
+
+    if (!eventDateTime || parsedParticipantLimit == null || parsedTicketPrice == null) {
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        schoolId: selectedSchoolId,
+        title: eventName,
+        startsAt: eventDateTime.toISOString(),
+        city: locationCity,
+        location: locationAddress,
+        description,
+        participantLimit: parsedParticipantLimit,
+        priceAmount: parsedTicketPrice,
+        priceCurrency: 'TRY',
+        eventType: selectedEventType,
+        danceTypeIds: selectedDanceTypeId ? [selectedDanceTypeId] : [],
+        locationPlace: {
+          address: locationAddress,
+          formatted_address: locationAddress,
+          city: locationCity,
+        },
+      };
+
+      if (eventId) {
+        await creatorSchoolEventsService.updateMine(eventId, payload);
+      } else {
+        await createSchoolEvent(payload);
+      }
+
+      setAlertModal({
+        title: isEditing ? 'Etkinlik güncellendi' : 'Etkinlik oluşturuldu',
+        message: isEditing ? 'Etkinlik bilgileri başarıyla güncellendi.' : 'Etkinlik başarıyla kaydedildi.',
+        goBackOnClose: true,
+      });
+    } catch (error) {
+      setAlertModal({
+        title: isEditing ? 'Etkinlik güncellenemedi' : 'Etkinlik oluşturulamadı',
+        message: error instanceof Error ? error.message : 'Lütfen tekrar deneyin.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [description, eventDateTime, eventId, eventName, hasInstructorProfile, isEditing, locationAddress, locationCity, participantLimit, selectedDanceTypeId, selectedEventType, selectedSchoolId, ticketPrice]);
 
   useEffect(() => {
     if (showDatePicker) {
@@ -133,6 +335,31 @@ export const EditEventScreen: React.FC = () => {
       return () => clearTimeout(t);
     }
   }, [showDatePicker]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setSchoolsLoading(true);
+      try {
+        const rows = await listSchools({ limit: 200 });
+        if (!cancelled) {
+          setSchools(rows);
+          setSelectedSchoolId((prev) => (prev && rows.some((row) => row.id === prev) ? prev : null));
+        }
+      } catch {
+        if (!cancelled) {
+          setSchools([]);
+          setSelectedSchoolId(null);
+        }
+      } finally {
+        if (!cancelled) setSchoolsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const openDatePicker = () => {
     if (eventDateTime) {
@@ -238,8 +465,16 @@ export const EditEventScreen: React.FC = () => {
       if (addr && typeof addr === 'object') {
         const parts = Object.values(addr).filter((v): v is string => typeof v === 'string' && v.length > 0);
         setLocationAddress(parts.length > 0 ? parts.join(', ') : `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+        setLocationCity(
+          typeof addr.city === 'string' && addr.city.trim()
+            ? addr.city.trim()
+            : typeof addr.subregion === 'string' && addr.subregion.trim()
+            ? addr.subregion.trim()
+            : null,
+        );
       } else {
         setLocationAddress(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+        setLocationCity(null);
       }
       setErrors((e) => ({ ...e, location: '' }));
     } catch {
@@ -258,25 +493,80 @@ export const EditEventScreen: React.FC = () => {
         singleButton
         confirmLabel="Tamam"
         onCancel={() => setAlertModal(null)}
-        onConfirm={() => setAlertModal(null)}
+        onConfirm={() => {
+          const shouldGoBack = alertModal?.goBackOnClose === true;
+          setAlertModal(null);
+          if (shouldGoBack) navigation.goBack();
+        }}
       />
       <Header
-        title="Etkinlik Oluştur"
+        title={screenTitle}
         showBack
         rightIcon="check"
-        onRightPress={validateAndPublish}
+        onRightPress={initialLoading ? undefined : () => void validateAndPublish()}
       />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
+        {initialLoading ? (
+          <View style={styles.loadingState}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={[typography.bodySmall, { color: '#9CA3AF', marginTop: spacing.sm }]}>
+              Etkinlik bilgileri yükleniyor...
+            </Text>
+          </View>
+        ) : (
         <ScrollView
           ref={scrollViewRef}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 320 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+        <View>
+          <View style={styles.labelRow}>
+            <View style={[styles.leftIconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100, marginRight: spacing.sm }]}>
+              <Icon name="school" size={18} color={colors.primary} />
+            </View>
+            <Text style={[typography.label, { color: '#9CA3AF' }]}>Bağlı Okul</Text>
+          </View>
+          <View style={{ height: spacing.xs }} />
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => !schoolsLoading && setShowSchoolPicker(true)}
+            disabled={schoolsLoading}
+            style={[
+              styles.dateInputRow,
+              {
+                backgroundColor: 'transparent',
+                borderRadius: radius.xl,
+                borderWidth: borders.thin,
+                borderColor: errors.school ? colors.error : 'rgba(255,255,255,0.12)',
+                paddingHorizontal: spacing.lg,
+              },
+            ]}
+          >
+            {schoolsLoading ? (
+              <>
+                <ActivityIndicator color={colors.primary} size="small" />
+                <Text style={[typography.body, { color: '#9CA3AF', marginLeft: spacing.sm, flex: 1 }]}>
+                  Okullar yükleniyor...
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={[typography.body, { color: selectedSchool ? '#FFFFFF' : '#6B7280', flex: 1 }]} numberOfLines={1}>
+                  {selectedSchool?.name || 'İstersen okul seç'}
+                </Text>
+                <Icon name="chevron-down" size={20} color="#FFFFFF" style={{ marginLeft: spacing.sm }} />
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={[typography.caption, { color: '#9CA3AF', marginTop: spacing.xs }]}>
+            Sokakta veya bağımsız düzenlenen etkinliklerde bu alanı boş bırakabilirsin.
+          </Text>
+        </View>
         <Input
           label="Etkinlik adı"
           placeholder=""
@@ -293,6 +583,44 @@ export const EditEventScreen: React.FC = () => {
           error={errors.eventName}
           required
         />
+        <View style={{ marginTop: spacing.lg }}>
+          <View style={[styles.labelRow, { marginBottom: spacing.xs }]}>
+            <View style={[styles.leftIconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100, marginRight: spacing.sm }]}>
+              <Icon name="shape-outline" size={18} color={colors.primary} />
+            </View>
+            <Text style={[typography.label, { color: '#9CA3AF' }]}>Etkinlik Tipi</Text>
+          </View>
+          <View style={{ height: spacing.xs }} />
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setShowEventTypePicker(true)}
+            style={[
+              styles.dateInputRow,
+              {
+                backgroundColor: 'transparent',
+                borderRadius: radius.xl,
+                borderWidth: borders.thin,
+                borderColor: 'rgba(255,255,255,0.12)',
+                paddingHorizontal: spacing.lg,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, paddingRight: spacing.md }}>
+              <Text style={[typography.body, { color: '#FFFFFF' }]} numberOfLines={1}>
+                {selectedEventTypeMeta.label}
+              </Text>
+              <Text style={[typography.caption, { color: '#9CA3AF', marginTop: 4 }]} numberOfLines={2}>
+                {selectedEventTypeMeta.hint}
+              </Text>
+            </View>
+            <Icon name="chevron-down" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          {!hasInstructorProfile ? (
+            <Text style={[typography.caption, { color: '#9CA3AF', marginTop: spacing.xs }]}>
+              Eğitmen profili olmayan hesaplar yalnızca etkinlik tipi ile kayıt oluşturabilir.
+            </Text>
+          ) : null}
+        </View>
         <Input
           label="Açıklama"
           placeholder=""
@@ -458,6 +786,121 @@ export const EditEventScreen: React.FC = () => {
             </View>
           </Modal>
         )}
+        {showSchoolPicker && (
+          <Modal transparent animationType="slide">
+            <View style={styles.modalContainer}>
+              <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setShowSchoolPicker(false)} />
+              <View style={[styles.pickerSheet, { backgroundColor: '#2d1b2e', maxHeight: '55%' }]}>
+                <View style={[styles.pickerHeader, { borderBottomColor: 'rgba(255,255,255,0.12)' }]}>
+                  <TouchableOpacity onPress={() => setShowSchoolPicker(false)} hitSlop={12}>
+                    <Text style={[typography.body, { color: '#9CA3AF' }]}>İptal</Text>
+                  </TouchableOpacity>
+                  <Text style={[typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>Okul seçin</Text>
+                  <View style={{ width: 40 }} />
+                </View>
+                <ScrollView style={{ maxHeight: 320 }} contentContainerStyle={{ paddingVertical: 8 }} showsVerticalScrollIndicator={false}>
+                  <TouchableOpacity
+                    style={[styles.pickerRow, { backgroundColor: selectedSchoolId === null ? 'rgba(255,255,255,0.12)' : 'transparent' }]}
+                    onPress={() => {
+                      setSelectedSchoolId(null);
+                      setShowSchoolPicker(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flex: 1, paddingRight: spacing.md }}>
+                      <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]} numberOfLines={1}>
+                        Bağımsız etkinlik
+                      </Text>
+                      <Text style={[typography.caption, { color: '#9CA3AF', marginTop: 4 }]} numberOfLines={2}>
+                        Sokakta, açık alanda veya bir okula bağlı olmayan etkinlik
+                      </Text>
+                    </View>
+                    {selectedSchoolId === null && <Icon name="check" size={20} color={colors.primary} />}
+                  </TouchableOpacity>
+                  {schools.length === 0 ? (
+                    <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.xl }}>
+                      <Text style={[typography.bodySmall, { color: '#9CA3AF', textAlign: 'center' }]}>
+                        Şu anda seçilebilir okul bulunamadı. İstersen bağımsız etkinlik olarak devam edebilirsin.
+                      </Text>
+                    </View>
+                  ) : (
+                    schools.map((school) => (
+                      <TouchableOpacity
+                        key={school.id}
+                        style={[styles.pickerRow, { backgroundColor: selectedSchoolId === school.id ? 'rgba(255,255,255,0.12)' : 'transparent' }]}
+                        onPress={() => {
+                          setSelectedSchoolId(school.id);
+                          setShowSchoolPicker(false);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={{ flex: 1, paddingRight: spacing.md }}>
+                          <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]} numberOfLines={1}>
+                            {school.name}
+                          </Text>
+                          {!!school.city && (
+                            <Text style={[typography.caption, { color: '#9CA3AF', marginTop: 4 }]} numberOfLines={1}>
+                              {school.city}
+                              {school.district ? `, ${school.district}` : ''}
+                            </Text>
+                          )}
+                        </View>
+                        {selectedSchoolId === school.id && <Icon name="check" size={20} color={colors.primary} />}
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+        )}
+        {showEventTypePicker && (
+          <Modal transparent animationType="slide">
+            <View style={styles.modalContainer}>
+              <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setShowEventTypePicker(false)} />
+              <View style={[styles.pickerSheet, { backgroundColor: '#2d1b2e', maxHeight: '40%' }]}>
+                <View style={[styles.pickerHeader, { borderBottomColor: 'rgba(255,255,255,0.12)' }]}>
+                  <TouchableOpacity onPress={() => setShowEventTypePicker(false)} hitSlop={12}>
+                    <Text style={[typography.body, { color: '#9CA3AF' }]}>İptal</Text>
+                  </TouchableOpacity>
+                  <Text style={[typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>Etkinlik tipi seçin</Text>
+                  <View style={{ width: 40 }} />
+                </View>
+                <View style={{ paddingVertical: 8 }}>
+                  {EVENT_TYPE_OPTIONS.map((option) => {
+                    const selected = selectedEventType === option.value;
+                    const disabled = option.value === 'lesson' && !hasInstructorProfile;
+                    return (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={[
+                          styles.pickerRow,
+                          { backgroundColor: selected ? 'rgba(255,255,255,0.12)' : 'transparent', opacity: disabled ? 0.55 : 1 },
+                        ]}
+                        onPress={() => {
+                          if (disabled) return;
+                          setSelectedEventType(option.value);
+                          setShowEventTypePicker(false);
+                        }}
+                        activeOpacity={disabled ? 1 : 0.7}
+                      >
+                        <View style={{ flex: 1, paddingRight: spacing.md }}>
+                          <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]}>{option.label}</Text>
+                          <Text style={[typography.caption, { color: '#9CA3AF', marginTop: 4 }]}>{option.hint}</Text>
+                        </View>
+                        {disabled ? (
+                          <Icon name="lock-outline" size={20} color="#9CA3AF" />
+                        ) : selected ? (
+                          <Icon name="check" size={20} color={colors.primary} />
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          </Modal>
+        )}
         <View style={{ marginTop: spacing.lg }}>
           <View style={[styles.labelRow, { marginBottom: spacing.xs }]}>
             <View style={[styles.leftIconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100, marginRight: spacing.sm }]}>
@@ -512,8 +955,8 @@ export const EditEventScreen: React.FC = () => {
               },
             ]}
           >
-            <Text style={[typography.body, { color: selectedDanceType ? '#FFFFFF' : '#6B7280', flex: 1 }]} numberOfLines={1}>
-              {selectedDanceType || 'Dans türü seçin'}
+            <Text style={[typography.body, { color: selectedDanceTypeLabel ? '#FFFFFF' : '#6B7280', flex: 1 }]} numberOfLines={1}>
+              {selectedDanceTypeLabel || 'Dans türü seçin'}
             </Text>
             <Icon name="chevron-down" size={20} color="#FFFFFF" style={{ marginLeft: spacing.sm }} />
           </TouchableOpacity>
@@ -533,21 +976,53 @@ export const EditEventScreen: React.FC = () => {
                 <View style={{ width: 40 }} />
               </View>
               <ScrollView style={{ maxHeight: 280 }} contentContainerStyle={{ paddingVertical: 8 }} showsVerticalScrollIndicator={false}>
-                {DANCE_TYPES.map((name) => (
-                  <TouchableOpacity
-                    key={name}
-                    style={[styles.pickerRow, { backgroundColor: selectedDanceType === name ? 'rgba(255,255,255,0.12)' : 'transparent' }]}
-                    onPress={() => {
-                      setSelectedDanceType(name);
-                      setErrors((e) => ({ ...e, danceType: '' }));
-                      setShowDancePicker(false);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]}>{name}</Text>
-                    {selectedDanceType === name && <Icon name="check" size={20} color={colors.primary} />}
-                  </TouchableOpacity>
-                ))}
+                {danceCatalogLoading ? (
+                  <View style={{ paddingVertical: spacing.xl, alignItems: 'center' }}>
+                    <ActivityIndicator color={colors.primary} />
+                    <Text style={[typography.caption, { color: '#9CA3AF', marginTop: spacing.sm }]}>Dans türleri yükleniyor...</Text>
+                  </View>
+                ) : danceCatalogError ? (
+                  <View style={{ paddingVertical: spacing.xl, paddingHorizontal: spacing.lg, alignItems: 'center' }}>
+                    <Text style={[typography.caption, { color: colors.error, textAlign: 'center' }]}>{danceCatalogError}</Text>
+                    <TouchableOpacity
+                      onPress={reloadDanceCatalog}
+                      style={{ marginTop: spacing.md }}
+                      hitSlop={8}
+                    >
+                      <Text style={[typography.captionBold, { color: colors.primary }]}>Tekrar dene</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : danceSections.length === 0 ? (
+                  <Text style={[typography.caption, { color: '#9CA3AF', textAlign: 'center', paddingVertical: spacing.xl }]}>
+                    Dans türü bulunamadı.
+                  </Text>
+                ) : (
+                  danceSections.map((section) => (
+                    <View key={section.categoryId} style={{ marginBottom: spacing.md }}>
+                      <Text style={[typography.captionBold, { color: '#9CA3AF', paddingHorizontal: spacing.lg, marginBottom: spacing.xs }]}>
+                        {section.categoryName}
+                      </Text>
+                      {section.options.map((option) => {
+                        const selected = selectedDanceTypeId === option.id;
+                        return (
+                          <TouchableOpacity
+                            key={option.id}
+                            style={[styles.pickerRow, { backgroundColor: selected ? 'rgba(255,255,255,0.12)' : 'transparent' }]}
+                            onPress={() => {
+                              setSelectedDanceTypeId(option.id);
+                              setErrors((e) => ({ ...e, danceType: '' }));
+                              setShowDancePicker(false);
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]}>{option.name}</Text>
+                            {selected ? <Icon name="check" size={20} color={colors.primary} /> : null}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ))
+                )}
               </ScrollView>
               </View>
             </View>
@@ -621,8 +1096,16 @@ export const EditEventScreen: React.FC = () => {
           error={errors.ticketPrice}
           required
         />
-        <Button title="Yayınla" onPress={validateAndPublish} fullWidth size="lg" style={{ marginTop: spacing.xxl }} />
+        <Button
+          title={submitLabel}
+          onPress={() => void validateAndPublish()}
+          loading={saving}
+          fullWidth
+          size="lg"
+          style={{ marginTop: spacing.xxl }}
+        />
         </ScrollView>
+        )}
       </KeyboardAvoidingView>
     </Screen>
   );
@@ -637,6 +1120,12 @@ const styles = StyleSheet.create({
   labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  loadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
   },
   leftIconBox: {
     width: 36,

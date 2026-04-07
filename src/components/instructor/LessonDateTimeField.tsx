@@ -76,11 +76,20 @@ function formatDisplay(d: Date): string {
 }
 
 type Props = {
+  label?: string;
+  helperText?: string;
+  emptyText?: string;
   value: Date | null;
   onChange: (next: Date | null) => void;
 };
 
-export const LessonDateTimeField: React.FC<Props> = ({ value, onChange }) => {
+export const LessonDateTimeField: React.FC<Props> = ({
+  label = 'Tarih ve saat',
+  helperText = 'İsteğe bağlı. Tek seferlik / ilk ders oturumu için.',
+  emptyText = 'Seçmek için dokunun',
+  value,
+  onChange,
+}) => {
   const { colors, spacing, typography, radius } = useTheme();
   const [open, setOpen] = useState(false);
   const [tempDate, setTempDate] = useState<Date | null>(null);
@@ -143,9 +152,9 @@ export const LessonDateTimeField: React.FC<Props> = ({ value, onChange }) => {
 
   return (
     <View style={{ marginBottom: spacing.md }}>
-      <Text style={[typography.captionBold, { color: '#FFFFFF', marginBottom: spacing.xs }]}>Tarih ve saat</Text>
+      <Text style={[typography.captionBold, { color: '#FFFFFF', marginBottom: spacing.xs }]}>{label}</Text>
       <Text style={[typography.caption, { color: colors.textTertiary, marginBottom: spacing.sm }]}>
-        İsteğe bağlı. Tek seferlik / ilk ders oturumu için.
+        {helperText}
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
         <TouchableOpacity
@@ -171,7 +180,7 @@ export const LessonDateTimeField: React.FC<Props> = ({ value, onChange }) => {
             ]}
             numberOfLines={2}
           >
-            {value ? formatDisplay(value) : 'Seçmek için dokunun'}
+            {value ? formatDisplay(value) : emptyText}
           </Text>
           <Icon name="chevron-down" size={20} color="#FFFFFF" />
         </TouchableOpacity>

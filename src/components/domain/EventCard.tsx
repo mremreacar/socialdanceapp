@@ -21,6 +21,8 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 
   const textColor = isDarkCard ? '#FFFFFF' : colors.text;
   const textSecondaryColor = isDarkCard ? 'rgba(255,255,255,0.75)' : colors.textSecondary;
   const iconColor = isDarkCard ? '#EE2AEE' : colors.primary;
+  const hasEventImage = !!event.image?.trim();
+  const eventImageSource = hasEventImage ? { uri: event.image.trim() } : require('../../../assets/social_dance.png');
 
   if (variant === 'compact') {
     return (
@@ -74,9 +76,9 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 
       ]}
     >
       <Image
-        source={{ uri: event.image }}
+        source={eventImageSource}
         style={[styles.image, { borderRadius: radius.lg }]}
-        contentFit="cover"
+        contentFit={hasEventImage ? 'cover' : 'contain'}
         placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
         transition={200}
       />

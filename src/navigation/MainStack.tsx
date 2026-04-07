@@ -20,12 +20,14 @@ import { EditProfileScreen } from '../screens/social/EditProfileScreen';
 import { NotificationsScreen } from '../screens/social/NotificationsScreen';
 import { SettingsPasswordScreen } from '../screens/social/SettingsPasswordScreen';
 import { SettingsPaymentsScreen } from '../screens/social/SettingsPaymentsScreen';
+import { SettingsReservationsScreen } from '../screens/social/SettingsReservationsScreen';
 import { SettingsHelpScreen } from '../screens/social/SettingsHelpScreen';
 import { SettingsAboutScreen } from '../screens/social/SettingsAboutScreen';
 import { BlockedUsersScreen } from '../screens/social/BlockedUsersScreen';
 import { ViewUserProfileScreen } from '../screens/social/ViewUserProfileScreen';
 import { FavoriteSchoolsScreen } from '../screens/social/FavoriteSchoolsScreen';
 import { FavoritesHubScreen } from '../screens/social/FavoritesHubScreen';
+import { UserPanelScreen } from '../screens/social/UserPanelScreen';
 import { InstructorOnboardingScreen } from '../screens/instructor/InstructorOnboardingScreen';
 import { InstructorsListScreen } from '../screens/explore/InstructorsListScreen';
 
@@ -55,10 +57,12 @@ export const MainStack: React.FC = () => {
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="SettingsPassword" component={SettingsPasswordScreen} />
       <Stack.Screen name="SettingsPayments" component={SettingsPaymentsScreen} />
+      <Stack.Screen name="SettingsReservations" component={SettingsReservationsScreen} />
       <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
       <Stack.Screen name="SettingsHelp" component={SettingsHelpScreen} />
       <Stack.Screen name="SettingsAbout" component={SettingsAboutScreen} />
       <Stack.Screen name="UserProfile" component={ViewUserProfileScreen} />
+      <Stack.Screen name="UserPanel" component={UserPanelScreen} />
       <Stack.Screen name="InstructorsList" component={InstructorsListScreen} />
       <Stack.Screen name="InstructorOnboarding" component={InstructorOnboardingScreen} />
     </Stack.Navigator>

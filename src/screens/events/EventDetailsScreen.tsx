@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Share, Modal, Alert } from 'react-native';
+import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Share, Modal, Alert, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
@@ -10,11 +10,11 @@ import { Icon } from '../../components/ui/Icon';
 import { Avatar } from '../../components/ui/Avatar';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { ConfirmModal } from '../../components/feedback/ConfirmModal';
-import { mockEvents, mockFavoritesEvents } from '../../constants/mockData';
+import { EmptyState } from '../../components/feedback/EmptyState';
 import { MainStackParamList } from '../../types/navigation';
 import { scheduleEventReminder } from '../../services/notifications';
 import { ApiError } from '../../services/api/apiClient';
-import { getSchoolEventById } from '../../services/api/schoolEvents';
+import { getSchoolEventDetailsById } from '../../services/api/schoolEvents';
 import { schoolEventAttendeesService, type EventAttendee } from '../../services/api/schoolEventAttendees';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'EventDetails'>;
@@ -35,74 +35,159 @@ function formatStartsAtLabel(iso: string): string {
   });
 }
 
+function formatStartsAtRangeLabel(startsAt: string, endsAt?: string | null): string {
+  const start = new Date(startsAt);
+  if (Number.isNaN(start.getTime())) return '';
+  const base = formatStartsAtLabel(startsAt);
+  if (!endsAt) return base;
+
+  const end = new Date(endsAt);
+  if (Number.isNaN(end.getTime())) return base;
+
+  const sameDay =
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth() &&
+    start.getDate() === end.getDate();
+
+  if (sameDay) {
+    return `${base} - ${end.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+
+  return `${base} - ${formatStartsAtLabel(endsAt)}`;
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function formatPriceLabel(amount: unknown, currency?: string | null): string | null {
+  const value = toFiniteNumber(amount);
+  if (value == null) return null;
+  if (value <= 0) return 'Ücretsiz';
+
+  const normalizedCurrency = (currency ?? 'TRY').trim().toUpperCase() || 'TRY';
+  try {
+    return new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: normalizedCurrency,
+      maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    }).format(value);
+  } catch {
+    return `${value} ${normalizedCurrency}`;
+  }
+}
+
+function formatDanceTypeSummary(danceTypes: string[]): string | null {
+  const cleaned = danceTypes.map((item) => item.trim()).filter(Boolean);
+  if (cleaned.length === 0) return null;
+  if (cleaned.length <= 2) return cleaned.join(' • ');
+  return `${cleaned.slice(0, 2).join(' • ')} +${cleaned.length - 2}`;
+}
+
 export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const { colors, spacing, radius, typography } = useTheme();
   const insets = useSafeAreaInsets();
-  const favoriteEvent = route.params.fromFavorites
-    ? mockFavoritesEvents.find((e) => String(e.id) === route.params.id)
-    : undefined;
-  const event =
-    favoriteEvent ??
-    mockEvents.find((e) => e.id === route.params.id) ??
-    mockEvents[0];
+  const { width: windowWidth } = useWindowDimensions();
   const [isFavorite, setIsFavorite] = useState(false);
   const [reminderScheduled, setReminderScheduled] = useState(false);
-  const [attending, setAttending] = useState(event.attendees ?? 12);
   const [hasJoined, setHasJoined] = useState(false);
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [leaveModalVisible, setLeaveModalVisible] = useState(false);
   const [friendsModalVisible, setFriendsModalVisible] = useState(false);
+  const [danceTypesExpanded, setDanceTypesExpanded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [heroHeight, setHeroHeight] = useState(280);
   const [remoteEvent, setRemoteEvent] = useState<{
     title: string;
     dateLabel: string;
     startsAtDate: Date | null;
-    location: string;
+    venue: string;
+    city: string | null;
+    openAddress: string;
     image: string;
     description: string;
+    danceTypes: string[];
+    priceLabel: string | null;
+    participantLimit: number | null;
+    attendeeCount: number;
   } | null>(null);
   const [dbAttendees, setDbAttendees] = useState<EventAttendee[] | null>(null);
-  const capacity = 50;
 
   useEffect(() => {
     if (!isUuid(route.params.id)) {
       setRemoteEvent(null);
+      setLoadError('Etkinlik verisi bulunamadı.');
+      setLoading(false);
       return;
     }
-    void getSchoolEventById(route.params.id)
+    setLoading(true);
+    setLoadError(null);
+    void getSchoolEventDetailsById(route.params.id)
       .then((row) => {
         if (!row) {
           setRemoteEvent(null);
+          setLoadError('Etkinlik verisi bulunamadı.');
           return;
         }
         const startsAt = new Date(row.starts_at);
         setRemoteEvent({
-          title: row.title?.trim() || event.title,
-          dateLabel: formatStartsAtLabel(row.starts_at) || event.date,
+          title: row.title?.trim() || 'Etkinlik',
+          dateLabel: formatStartsAtRangeLabel(row.starts_at, row.ends_at) || '-',
           startsAtDate: Number.isNaN(startsAt.getTime()) ? null : startsAt,
-          location: row.location?.trim() || event.location,
-          image: row.image_url?.trim() || event.image,
-          description: row.description?.trim() || event.description || '',
+          venue: row.location?.trim() || '-',
+          city: row.city?.trim() || null,
+          openAddress: row.open_address?.trim() || row.location?.trim() || '-',
+          image: row.image_url?.trim() || '',
+          description: row.description?.trim() || '',
+          danceTypes: row.dance_type_names ?? [],
+          priceLabel: formatPriceLabel(row.price_amount, row.price_currency),
+          participantLimit: toFiniteNumber(row.participant_limit),
+          attendeeCount: row.attendee_count ?? 0,
         });
       })
-      .catch(() => setRemoteEvent(null));
+      .catch(() => {
+        setRemoteEvent(null);
+        setLoadError('Etkinlik detayları yüklenemedi.');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, [route.params.id]);
 
-  const eventTitle = remoteEvent?.title ?? event.title;
-  const eventDateLabel = remoteEvent?.dateLabel ?? event.date;
-  const eventLocation = remoteEvent?.location ?? event.location;
-  const eventImage = remoteEvent?.image ?? event.image;
+  const eventTitle = remoteEvent?.title ?? 'Etkinlik';
+  const eventDateLabel = remoteEvent?.dateLabel ?? '-';
+  const eventVenue = remoteEvent?.venue ?? '-';
+  const eventOpenAddress = remoteEvent?.openAddress ?? '-';
+  const eventImage = remoteEvent?.image ?? '';
+  const eventDanceTypes = remoteEvent?.danceTypes ?? [];
+  const eventDanceTypeLabel = formatDanceTypeSummary(eventDanceTypes);
+  const eventPriceLabel = remoteEvent?.priceLabel ?? null;
+  const eventCityLabel = remoteEvent?.city ?? null;
   const eventDescription =
-    remoteEvent?.description ||
-    event.description ||
-    `${eventTitle} ile unutulmaz bir dans gecesi sizi bekliyor. Canlı müzik ve harika bir atmosferde ${event.danceType ?? 'Latin'} ritimlerine kendinizi bırakın.`;
-  const effectiveRawDate = remoteEvent?.startsAtDate ?? event.rawDate ?? null;
+    remoteEvent?.description?.trim() ||
+    (eventDanceTypeLabel
+      ? `${eventTitle} etkinliğinde ${eventDanceTypeLabel} deneyimi seni bekliyor.`
+      : `${eventTitle} etkinlik detayları burada yer alır.`);
+  const effectiveRawDate = remoteEvent?.startsAtDate ?? null;
   const isDbEvent = isUuid(route.params.id);
-  const attendeeList: EventAttendee[] = dbAttendees ?? (event.attendeeAvatars ?? ['https://i.pravatar.cc/150?u=1', 'https://i.pravatar.cc/150?u=2', 'https://i.pravatar.cc/150?u=3']).map((avatar, i) => ({
-    id: `event-${event.id}-${i}`,
-    name: `Dansçı ${i + 1}`,
-    avatar,
-  }));
-  const attendingCount = isDbEvent ? attendeeList.length : attending;
+  const attendeeList: EventAttendee[] = dbAttendees ?? [];
+  const attendingCount = Math.max(remoteEvent?.attendeeCount ?? 0, attendeeList.length);
+  const capacity = remoteEvent?.participantLimit ?? 50;
+  const visibleDanceTypes = danceTypesExpanded ? eventDanceTypes : eventDanceTypes.slice(0, 3);
+  const hiddenDanceTypeCount = Math.max(eventDanceTypes.length - visibleDanceTypes.length, 0);
+  const generalInfoItems = [
+    { key: 'date', icon: 'calendar-outline' as const, label: 'Tarih', value: eventDateLabel },
+    { key: 'city', icon: 'city-variant-outline' as const, label: 'Şehir', value: eventCityLabel },
+    { key: 'venue', icon: 'map-marker-outline' as const, label: 'Konum', value: eventVenue },
+    { key: 'address', icon: 'map-marker-radius-outline' as const, label: 'Açık Adres', value: remoteEvent?.openAddress?.trim() || null },
+    { key: 'price', icon: 'tag-outline' as const, label: 'Ücret', value: eventPriceLabel },
+  ].filter((item) => item.value && item.value !== '-');
 
   useEffect(() => {
     if (!isDbEvent) {
@@ -128,6 +213,38 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     };
   }, [isDbEvent, route.params.id]);
 
+  useEffect(() => {
+    setDanceTypesExpanded(false);
+  }, [route.params.id, eventDanceTypes.length]);
+
+  useEffect(() => {
+    if (!eventImage) {
+      setHeroHeight(280);
+      return;
+    }
+
+    let cancelled = false;
+    const minHeight = 220;
+    const maxHeight = 460;
+    const contentWidth = Math.max(windowWidth, 1);
+
+    Image.getSize(
+      eventImage,
+      (width, height) => {
+        if (cancelled || width <= 0 || height <= 0) return;
+        const nextHeight = Math.min(Math.max((contentWidth * height) / width, minHeight), maxHeight);
+        setHeroHeight(nextHeight);
+      },
+      () => {
+        if (!cancelled) setHeroHeight(280);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [eventImage, windowWidth]);
+
   const handleJoin = async () => {
     if (isDbEvent) {
       try {
@@ -145,9 +262,6 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         Alert.alert('Katılım', msg);
         return;
       }
-    } else {
-      setHasJoined(true);
-      setAttending((prev) => prev + 1);
     }
     if (effectiveRawDate && !reminderScheduled) {
       const id = await scheduleEventReminder(eventTitle, effectiveRawDate);
@@ -169,16 +283,13 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           setHasJoined(false);
         })
         .catch(() => {});
-    } else {
-      setHasJoined(false);
-      setAttending((prev) => Math.max(0, prev - 1));
     }
     setLeaveModalVisible(false);
   };
 
   const handleShare = () => {
     Share.share({
-      message: `${eventTitle}\n${eventDateLabel}\n${eventLocation}\n${event.price ?? ''}`,
+      message: `${eventTitle}\n${eventDateLabel}\n${eventVenue}\n${eventPriceLabel ?? ''}`,
       title: eventTitle,
     }).catch(() => {});
   };
@@ -207,7 +318,7 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   );
 
   return (
-    <Screen edges={[]}>
+    <Screen edges={['top', 'bottom']}>
       <ConfirmModal
         visible={joinModalVisible}
         title="Teşekkürler!"
@@ -274,61 +385,108 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       </Modal>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.lg }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.lg + Math.max(insets.bottom, spacing.md) }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.heroWrap}>
-          <Image source={{ uri: eventImage }} style={styles.heroImage} />
+        {loading ? (
+          <View style={[styles.centerState, { paddingTop: insets.top + 120 }]}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : !remoteEvent ? (
+          <View style={[styles.centerState, { paddingHorizontal: spacing.lg, paddingTop: insets.top + 120 }]}>
+            <EmptyState
+              icon="calendar-blank-outline"
+              title="Etkinlik verisi bulunamadı."
+              subtitle={loadError ?? 'Bu etkinlik backend tarafında bulunamadı ya da erişilemiyor.'}
+            />
+          </View>
+        ) : (
+          <>
+        <View style={[styles.heroWrap, { height: heroHeight, backgroundColor: colors.headerBg }]}>
+          {eventImage ? (
+            <Image source={{ uri: eventImage }} style={styles.heroImage} />
+          ) : (
+            <View style={[styles.heroPlaceholder, { backgroundColor: colors.headerBg }]}>
+              <Icon name="calendar-blank-outline" size={48} color="rgba(255,255,255,0.7)" />
+            </View>
+          )}
           <View style={[styles.heroGradient, { backgroundColor: 'transparent' }]} />
         </View>
 
         <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.xl }}>
             <Text style={[typography.h3, { color: '#FFFFFF' }]}>{eventTitle}</Text>
-            <View style={[styles.row, { marginTop: spacing.sm }]}>
-              <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
-                <Icon name="calendar-outline" size={18} color={colors.primary} />
-              </View>
-              <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.85)', marginLeft: spacing.sm }]}>{eventDateLabel}</Text>
-            </View>
-            <View style={[styles.row, { marginTop: spacing.xs }]}>
-              <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
-                <Icon name="map-marker-outline" size={18} color={colors.primary} />
-              </View>
-              <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.85)', marginLeft: spacing.sm }]}>{eventLocation}</Text>
-            </View>
-            {event.danceType != null && (
-              <View style={[styles.row, { marginTop: spacing.sm }]}>
-                <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
-                  <Icon name="music" size={18} color={colors.primary} />
+            <View style={[styles.infoCard, { marginTop: spacing.md, borderRadius: radius.xl, padding: spacing.md }]}>
+              {generalInfoItems.map((item, index) => (
+                <View key={item.key}>
+                  {index > 0 ? <View style={[styles.infoDivider, { marginVertical: spacing.md }]} /> : null}
+                  <View style={styles.infoItem}>
+                    <View style={[styles.iconBox, styles.infoIconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
+                      <Icon name={item.icon} size={18} color={colors.primary} />
+                    </View>
+                    <View style={[styles.infoBody, { marginLeft: spacing.sm }]}>
+                      <Text style={[typography.caption, { color: 'rgba(255,255,255,0.62)' }]}>{item.label}</Text>
+                      <Text style={[typography.bodySmall, styles.infoValue, { color: 'rgba(255,255,255,0.9)', marginTop: 4 }]}>
+                        {item.value}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
-                <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.7)', marginLeft: spacing.sm }]}>Dans Türü: </Text>
-                <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.85)' }]}>{event.danceType}</Text>
-              </View>
-            )}
-            {event.price != null && (
-              <View style={[styles.row, { marginTop: spacing.sm }]}>
-                <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
-                  <Icon name="tag-outline" size={18} color={colors.primary} />
-                </View>
-                <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.7)', marginLeft: spacing.sm }]}>Ücret: </Text>
-                <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.85)' }]}>{event.price}</Text>
-              </View>
-            )}
-            <View style={{ marginTop: spacing.sm }}>
-              <View style={[styles.row, { alignItems: 'center' }]}>
-                <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
+              ))}
+              <View style={[styles.infoDivider, { marginVertical: spacing.md }]} />
+              <View style={styles.infoItem}>
+                <View style={[styles.iconBox, styles.infoIconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
                   <Icon name="account-group-outline" size={18} color={colors.primary} />
                 </View>
-                <View style={{ marginLeft: spacing.sm, flex: 1 }}>
+                <View style={[styles.infoBody, { marginLeft: spacing.sm }]}>
                   <View style={styles.rowBetween}>
-                    <Text style={[typography.bodySmall, { color: 'rgba(255,255,255,0.7)' }]}>Kapasite</Text>
+                    <Text style={[typography.caption, { color: 'rgba(255,255,255,0.62)' }]}>Kapasite</Text>
                     <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{attendingCount} / {capacity}</Text>
                   </View>
-                  <ProgressBar progress={attendingCount / capacity} height={4} style={{ marginTop: 6, width: '100%' }} />
+                  <ProgressBar progress={attendingCount / capacity} height={4} style={{ marginTop: 8, width: '100%' }} />
                 </View>
               </View>
             </View>
-
+            {eventDanceTypes.length > 0 ? (
+              <View style={[styles.danceTypeCard, { marginTop: spacing.md, borderRadius: radius.xl, padding: spacing.md }]}>
+                <View style={styles.danceTypeHeader}>
+                  <View style={styles.row}>
+                    <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
+                      <Icon name="music" size={18} color={colors.primary} />
+                    </View>
+                    <View style={{ marginLeft: spacing.sm }}>
+                      <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Dans Türleri</Text>
+                      <Text style={[typography.caption, { color: 'rgba(255,255,255,0.65)' }]}>
+                        {eventDanceTypes.length} stil
+                      </Text>
+                    </View>
+                  </View>
+                  {eventDanceTypes.length > 3 ? (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => setDanceTypesExpanded((current) => !current)}
+                      style={[styles.danceTypeToggle, { borderRadius: radius.full }]}
+                    >
+                      <Text style={[typography.captionBold, { color: '#FFFFFF' }]}>
+                        {danceTypesExpanded ? 'Daralt' : `+${hiddenDanceTypeCount} daha`}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                <View style={[styles.danceTypeTags, { marginTop: spacing.md }]}>
+                  {visibleDanceTypes.map((danceType, index) => (
+                    <View
+                      key={`${danceType}-${index}`}
+                      style={[styles.danceTypeTag, { borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm }]}
+                    >
+                      <Icon name="music-note" size={14} color={colors.primary} />
+                      <Text style={[typography.captionBold, { color: '#FFFFFF', marginLeft: 6 }]} numberOfLines={1}>
+                        {danceType}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
           <TouchableOpacity
             activeOpacity={0.8}
             onPress={() => setFriendsModalVisible(true)}
@@ -393,7 +551,17 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             </Text>
           </View>
           <View style={{ flex: 1, minHeight: 24 }} />
-          <View style={[styles.bottomBar, { backgroundColor: colors.headerBg, paddingHorizontal: spacing.lg, paddingVertical: spacing.lg }]}>
+          <View
+            style={[
+              styles.bottomBar,
+              {
+                backgroundColor: colors.headerBg,
+                paddingHorizontal: spacing.lg,
+                paddingTop: spacing.lg,
+                paddingBottom: spacing.lg + Math.max(insets.bottom - spacing.sm, 0),
+              },
+            ]}
+          >
             <Button
               title={hasJoined ? 'Katılmaktan vazgeç' : 'Katıl'}
               onPress={hasJoined ? handleLeave : handleJoin}
@@ -402,8 +570,10 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             />
           </View>
         </View>
+          </>
+        )}
       </ScrollView>
-      <View style={[styles.headerOverlay, { paddingTop: insets.top }]} pointerEvents="box-none">
+      <View style={[styles.headerOverlay, { paddingTop: insets.top + spacing.xs }]} pointerEvents="box-none">
         <Header
           title=""
           showBack
@@ -418,6 +588,11 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
+  centerState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerOverlay: {
     position: 'absolute',
     top: 0,
@@ -425,8 +600,14 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
   },
-  heroWrap: { position: 'relative', height: 280 },
-  heroImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  heroWrap: { position: 'relative', justifyContent: 'center' },
+  heroImage: { width: '100%', height: '100%', resizeMode: 'contain' },
+  heroPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   heroGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 80 },
   headerRightStack: { alignItems: 'center' },
   headerOverlayBtn: {
@@ -444,6 +625,59 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+  },
+  infoCard: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  infoDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  infoIconBox: {
+    marginTop: 2,
+  },
+  infoBody: {
+    flex: 1,
+  },
+  infoValue: {
+    flexShrink: 1,
+    lineHeight: 20,
+  },
+  danceTypeCard: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  danceTypeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  danceTypeToggle: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  danceTypeTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  danceTypeTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    maxWidth: '100%',
+    backgroundColor: 'rgba(75,21,75,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(238,42,238,0.18)',
   },
   friendsBorder: { borderWidth: 1 },
   friendsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

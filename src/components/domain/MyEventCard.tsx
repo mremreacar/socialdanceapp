@@ -26,6 +26,8 @@ interface MyEventCardProps {
   onPress: () => void;
   onFavoritePress?: () => void;
   onReservationPress?: () => void;
+  actionLabel?: string;
+  actionDisabled?: boolean;
   /** Supabase `school_event_attendees` ile eşleşen katılım */
   hasJoinedReservation?: boolean;
   reservationLoading?: boolean;
@@ -42,16 +44,22 @@ export const MyEventCard: React.FC<MyEventCardProps> = ({
   onPress,
   onFavoritePress,
   onReservationPress,
+  actionLabel,
+  actionDisabled = false,
   hasJoinedReservation = false,
   reservationLoading = false,
   onAvatarPress,
 }) => {
   const { colors, spacing, radius, typography } = useTheme();
+  const hasEventImage = !!event.image?.trim();
+  const eventImageSource = hasEventImage ? { uri: event.image.trim() } : require('../../../assets/social_dance.png');
   const avatars = event.attendeeAvatars ?? [
     'https://i.pravatar.cc/150?u=21',
     'https://i.pravatar.cc/150?u=22',
     'https://i.pravatar.cc/150?u=23',
   ];
+  const buttonDisabled = hasJoinedReservation || reservationLoading || actionDisabled;
+  const buttonLabel = hasJoinedReservation ? 'Katıldınız' : actionLabel ?? 'Rezervasyon Yap';
 
   return (
     <TouchableOpacity
@@ -61,9 +69,9 @@ export const MyEventCard: React.FC<MyEventCardProps> = ({
     >
       <View style={styles.imageWrap}>
         <Image
-          source={{ uri: event.image }}
+          source={eventImageSource}
           style={[styles.image, { borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl }]}
-          contentFit="cover"
+          contentFit={hasEventImage ? 'cover' : 'contain'}
           placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
           transition={200}
         />
@@ -137,16 +145,16 @@ export const MyEventCard: React.FC<MyEventCardProps> = ({
         <TouchableOpacity
           onPress={(e) => {
             e.stopPropagation();
-            if (hasJoinedReservation || reservationLoading) return;
+            if (buttonDisabled) return;
             onReservationPress?.();
           }}
           activeOpacity={0.9}
           style={styles.reservationBtn}
-          disabled={hasJoinedReservation || reservationLoading}
+          disabled={buttonDisabled}
         >
           <LinearGradient
             colors={
-              hasJoinedReservation
+              buttonDisabled
                 ? ['rgba(255,255,255,0.15)', 'rgba(255,255,255,0.12)']
                 : [colors.primary, colors.purple ?? '#a855f7']
             }
@@ -157,9 +165,7 @@ export const MyEventCard: React.FC<MyEventCardProps> = ({
             {reservationLoading ? (
               <ActivityIndicator color="#FFF" size="small" />
             ) : (
-              <Text style={[typography.bodySmallBold, { color: '#FFF' }]}>
-                {hasJoinedReservation ? 'Katıldınız' : 'Rezervasyon Yap'}
-              </Text>
+              <Text style={[typography.bodySmallBold, { color: '#FFF' }]}>{buttonLabel}</Text>
             )}
           </LinearGradient>
         </TouchableOpacity>

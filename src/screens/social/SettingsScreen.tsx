@@ -13,6 +13,7 @@ import { cancelAllScheduledLocalNotifications } from '../../services/notificatio
 import { authService } from '../../services/api/auth';
 import { instructorProfileService } from '../../services/api/instructorProfile';
 import { useDanceCatalog } from '../../hooks/useDanceCatalog';
+import { getCurrentAppVersionLabel } from '../../services/appInfo';
 import type { InstructorProfileModel } from '../../services/api/instructorProfile';
 
 type SettingsItem = {
@@ -30,6 +31,7 @@ const settingsSections: { title: string; items: SettingsItem[] }[] = [
     items: [
       { icon: 'account', iconBg: 'primary', label: 'Kişisel Bilgiler', screen: 'EditProfile' },
       { icon: 'lock', iconBg: 'blue', label: 'Şifre ve Güvenlik', screen: 'SettingsPassword' },
+      { icon: 'calendar-check-outline', iconBg: 'teal', label: 'Rezervasyonlarım', screen: 'SettingsReservations' },
       { icon: 'block-helper', iconBg: 'orange', label: 'Engellenen Kişiler', screen: 'BlockedUsers' },
     ],
   },
@@ -119,7 +121,7 @@ export const SettingsScreen: React.FC = () => {
                   <Icon name="music" size={20} color={getIconColor('primary')} />
                 </View>
                 <View style={{ marginLeft: spacing.md, flex: 1 }}>
-                  <Text style={[typography.bodyMedium, { color: '#FFFFFF' }]}>Favori Danslar</Text>
+                  <Text style={[typography.bodyMedium, { color: '#FFFFFF' }]}>İlgilendiği Dans Türleri</Text>
                   {favoriteDancesValue ? (
                     <Text style={[typography.caption, { color: '#9CA3AF', marginTop: 2 }]} numberOfLines={1}>
                       {favoriteDancesValue}
@@ -307,7 +309,7 @@ export const SettingsScreen: React.FC = () => {
           icon="logout"
         />
         <Text style={[typography.caption, { color: '#FFFFFF', textAlign: 'center', marginTop: spacing.lg }]}>
-          Socialdance v1.0.2 (Build 2024)
+          Socialdance {getCurrentAppVersionLabel()}
         </Text>
       </ScrollView>
     </Screen>

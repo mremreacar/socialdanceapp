@@ -79,6 +79,11 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const useRemote = hasSupabaseConfig() && isLikelyUuid(userId);
+  const resolvedPeerUserId = useMemo(() => {
+    if (!useRemote) return null;
+    const candidate = instructor?.userId?.trim() || userId.trim();
+    return isLikelyUuid(candidate) ? candidate : null;
+  }, [instructor?.userId, useRemote, userId]);
 
   const displayName = (publicProfile?.displayName || name || '').trim() || 'Kullanıcı';
   const displayUsername = (publicProfile?.username || username || '').trim().replace(/^@/, '');
@@ -94,6 +99,10 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
     if (publicProfile?.favoriteDances?.length) return resolveCompact(publicProfile.favoriteDances);
     return null;
   }, [instructor?.specialties, publicProfile?.favoriteDances, resolveCompact]);
+  const uniqueDanceTags = useMemo(() => {
+    const source = useRemote && danceTags && danceTags.length > 0 ? danceTags : !useRemote ? mockDances : [];
+    return [...new Set(source.map((item) => item.trim()).filter(Boolean))];
+  }, [danceTags, useRemote]);
 
   const load = useCallback(async () => {
     if (!useRemote) {
@@ -156,7 +165,7 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
   }, [load]);
 
   useEffect(() => {
-    if (!useRemote || !conversationIdFromChat) {
+    if (!useRemote) {
       setCurrentUserId(null);
       return;
     }
@@ -172,13 +181,17 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
     return () => {
       cancelled = true;
     };
-  }, [useRemote, conversationIdFromChat]);
+  }, [useRemote]);
+
+  const canMessageUser = !!resolvedPeerUserId && !!currentUserId && currentUserId !== resolvedPeerUserId;
+  const isOwnProfile = !!resolvedPeerUserId && !!currentUserId && currentUserId === resolvedPeerUserId;
 
   const showReportFromChat =
     !!conversationIdFromChat &&
     useRemote &&
     !!currentUserId &&
-    currentUserId !== userId;
+    !!resolvedPeerUserId &&
+    currentUserId !== resolvedPeerUserId;
 
   const onRefresh = async () => {
     if (refreshing || !useRemote) return;
@@ -256,50 +269,75 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
             {bioText}
           </Text>
           <View style={styles.actionRow}>
-            <TouchableOpacity
-              onPress={() => void handleFollowToggle()}
-              activeOpacity={0.8}
-              disabled={!useRemote || followBusy}
-              style={[
-                styles.followBtn,
-                {
-                  backgroundColor: isFollowing ? 'transparent' : colors.primary,
-                  borderWidth: 1,
-                  borderColor: isFollowing ? '#9CA3AF' : colors.primary,
-                  borderRadius: 50,
-                  opacity: !useRemote ? 0.5 : 1,
-                },
-              ]}
-            >
-              {followBusy ? (
-                <ActivityIndicator color={isFollowing ? '#9CA3AF' : '#FFFFFF'} size="small" />
-              ) : (
-                <Text style={[typography.bodySmallBold, { color: isFollowing ? '#9CA3AF' : '#FFFFFF' }]}>
-                  {isFollowing ? 'Takipten Çık' : 'Takip Et'}
-                </Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() =>
-                navigation.navigate('ChatDetail', {
-                  id: String(userId),
-                  name: displayName,
-                  avatar: displayAvatar,
-                  isNewChat: true,
-                  ...(conversationIdFromChat ? { conversationId: conversationIdFromChat } : {}),
-                })
-              }
-              style={[
-                styles.followBtn,
-                { backgroundColor: CARD_BG, borderWidth: 1, borderColor: CARD_BORDER, borderRadius: 50, marginLeft: spacing.sm },
-              ]}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Icon name="message-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Mesaj</Text>
+            {isOwnProfile ? (
+              <View
+                style={[
+                  styles.ownProfileBadge,
+                  {
+                    backgroundColor: 'rgba(255,255,255,0.04)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.12)',
+                    borderRadius: 50,
+                  },
+                ]}
+              >
+                <Icon name="account-outline" size={18} color="#9CA3AF" style={{ marginRight: 8 }} />
+                <Text style={[typography.bodySmallBold, { color: '#D1D5DB' }]}>Bu sizin sayfanız</Text>
               </View>
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => void handleFollowToggle()}
+                activeOpacity={0.8}
+                disabled={!useRemote || followBusy}
+                style={[
+                  styles.followBtn,
+                  {
+                    backgroundColor: isFollowing ? 'transparent' : colors.primary,
+                    borderWidth: 1,
+                    borderColor: isFollowing ? '#9CA3AF' : colors.primary,
+                    borderRadius: 50,
+                    opacity: !useRemote ? 0.5 : 1,
+                  },
+                ]}
+              >
+                {followBusy ? (
+                  <ActivityIndicator color={isFollowing ? '#9CA3AF' : '#FFFFFF'} size="small" />
+                ) : (
+                  <Text style={[typography.bodySmallBold, { color: isFollowing ? '#9CA3AF' : '#FFFFFF' }]}>
+                    {isFollowing ? 'Takipten Çık' : 'Takip Et'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+            {canMessageUser ? (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() =>
+                  navigation.navigate('ChatDetail', {
+                    id: resolvedPeerUserId,
+                    name: displayName,
+                    avatar: displayAvatar,
+                    isNewChat: true,
+                    ...(conversationIdFromChat ? { conversationId: conversationIdFromChat } : {}),
+                  })
+                }
+                style={[
+                  styles.followBtn,
+                  {
+                    backgroundColor: CARD_BG,
+                    borderWidth: 1,
+                    borderColor: CARD_BORDER,
+                    borderRadius: 50,
+                    marginLeft: spacing.sm,
+                  },
+                ]}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Icon name="message-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Mesaj</Text>
+                </View>
+              </TouchableOpacity>
+            ) : null}
           </View>
           {showReportFromChat ? (
             <TouchableOpacity
@@ -345,13 +383,13 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
           {instructor?.specialties?.length ? 'Uzmanlık / branşlar' : 'Favori danslar'}
         </Text>
         <View style={styles.tagsRow}>
-          {(useRemote && danceTags && danceTags.length > 0 ? danceTags : !useRemote ? mockDances : []).map((dance) => (
-            <View key={dance} style={[styles.tag, { backgroundColor: CARD_BG, borderRadius: radius.full, borderWidth: 1, borderColor: CARD_BORDER }]}>
+          {uniqueDanceTags.map((dance, index) => (
+            <View key={`${dance}-${index}`} style={[styles.tag, { backgroundColor: CARD_BG, borderRadius: radius.full, borderWidth: 1, borderColor: CARD_BORDER }]}>
               <Icon name="music" size={14} color={colors.primary} style={{ marginRight: 6 }} />
               <Text style={[typography.captionBold, { color: '#FFFFFF' }]}>{dance}</Text>
             </View>
           ))}
-          {useRemote && (!danceTags || danceTags.length === 0) ? (
+          {useRemote && uniqueDanceTags.length === 0 ? (
             <Text style={[typography.caption, { color: '#9CA3AF' }]}>Henüz eklenmemiş.</Text>
           ) : null}
         </View>
@@ -510,6 +548,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 120,
+  },
+  ownProfileBadge: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 180,
   },
   statsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
   statItem: { alignItems: 'center', flex: 1 },

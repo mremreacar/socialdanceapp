@@ -5,6 +5,7 @@ import {
   supabaseRestRequest,
   supabaseStorageUpload,
 } from './apiClient';
+import { buildSubcategoryLabelMaps, fetchDanceCatalog } from './danceCatalog';
 import type { MeResponseDto, UpdateMeRequestDto, UpdateMeResponseDto, UserDto } from './types';
 import { storage } from '../storage';
 
@@ -39,9 +40,25 @@ type SupabaseProfileRow = {
   avatar_url?: string | null;
   bio?: string | null;
   city?: string | null;
+  managed_user_interest_dance_types?: ProfileDanceTypeLinkRow[] | null;
   favorite_dances?: string[] | null;
   other_interests?: string | null;
   notifications_enabled?: boolean | null;
+};
+
+type DanceTypeJoinRow = {
+  id: string;
+  name: string | null;
+  parent_id?: string | null;
+};
+
+type ProfileDanceTypeLinkRow = {
+  dance_type_id?: string | null;
+  dance_types?: DanceTypeJoinRow | null;
+};
+
+type ManagedUserRow = {
+  id: string;
 };
 
 type SupabaseProfileUpsert = {
@@ -67,7 +84,55 @@ function extractMetadataStringArray(metadata: Record<string, unknown>, key: stri
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
-function mapSupabaseProfile(authUser: SupabaseUserResponse, row: SupabaseProfileRow): UserDto {
+function normalizeText(value: string): string {
+  return value.trim().toLocaleLowerCase('tr-TR');
+}
+
+function uniqueTrimmed(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.map((value) => (typeof value === 'string' ? value.trim() : '')).filter(Boolean))];
+}
+
+async function resolveStoredFavoriteDanceIds(values: string[]): Promise<string[]> {
+  const rawValues = uniqueTrimmed(values);
+  if (rawValues.length === 0) return [];
+
+  try {
+    const catalog = await fetchDanceCatalog();
+    const { compactBySubId, fullBySubId } = buildSubcategoryLabelMaps(catalog);
+    const idByLabel = new Map<string, string>();
+
+    for (const [id, label] of compactBySubId.entries()) {
+      idByLabel.set(normalizeText(label), id);
+    }
+    for (const [id, label] of fullBySubId.entries()) {
+      idByLabel.set(normalizeText(label), id);
+    }
+
+    const resolvedIds: string[] = [];
+    for (const value of rawValues) {
+      if (compactBySubId.has(value)) {
+        resolvedIds.push(value);
+        continue;
+      }
+      const matchedId = idByLabel.get(normalizeText(value));
+      if (matchedId) {
+        resolvedIds.push(matchedId);
+      }
+    }
+    return uniqueTrimmed(resolvedIds);
+  } catch {
+    return rawValues;
+  }
+}
+
+async function resolveProfileFavoriteDanceIds(row: SupabaseProfileRow): Promise<string[]> {
+  const relationIds = uniqueTrimmed((row.managed_user_interest_dance_types ?? []).map((item) => item.dance_type_id));
+  if (relationIds.length > 0) return relationIds;
+  return await resolveStoredFavoriteDanceIds(Array.isArray(row.favorite_dances) ? row.favorite_dances : []);
+}
+
+async function mapSupabaseProfile(authUser: SupabaseUserResponse, row: SupabaseProfileRow): Promise<UserDto> {
+  const favoriteDanceIds = await resolveProfileFavoriteDanceIds(row);
   return {
     id: authUser.id,
     email: typeof authUser.email === 'string' ? authUser.email : null,
@@ -76,7 +141,7 @@ function mapSupabaseProfile(authUser: SupabaseUserResponse, row: SupabaseProfile
     avatarUrl: row.avatar_url ?? null,
     bio: row.bio ?? null,
     city: row.city ?? null,
-    favoriteDances: row.favorite_dances ?? [],
+    favoriteDances: favoriteDanceIds,
     otherInterests: row.other_interests ?? null,
     notificationsEnabled: row.notifications_enabled !== false,
   };
@@ -191,13 +256,91 @@ async function getAuthUser(accessToken: string): Promise<SupabaseUserResponse> {
   });
 }
 
-async function getProfileRow(accessToken: string, userId: string): Promise<SupabaseProfileRow | null> {
-  const rows = await supabaseRestRequest<SupabaseProfileRow[]>(
-    `/profiles?select=id,display_name,username,avatar_url,bio,city,favorite_dances,other_interests,notifications_enabled&id=eq.${encodeURIComponent(userId)}&limit=1`,
-    { accessToken },
-  );
+async function findManagedUserIdByColumn(
+  accessToken: string,
+  column: string,
+  authUserId: string,
+): Promise<string | null> {
+  try {
+    const rows = await supabaseRestRequest<ManagedUserRow[]>(
+      `/managed_users?select=id&${column}=eq.${encodeURIComponent(authUserId)}&limit=1`,
+      { accessToken },
+    );
+    const managedUserId = rows?.[0]?.id?.trim();
+    return managedUserId || null;
+  } catch (error) {
+    if (canFallbackToLegacyFavoriteDances(error)) return null;
+    throw error;
+  }
+}
 
-  return rows[0] ?? null;
+async function resolveManagedUserId(accessToken: string, authUserId: string): Promise<string> {
+  const directId = authUserId.trim();
+  const candidates = ['auth_user_id', 'profile_id', 'user_id', 'owner_user_id'];
+
+  for (const column of candidates) {
+    const managedUserId = await findManagedUserIdByColumn(accessToken, column, directId);
+    if (managedUserId) return managedUserId;
+  }
+
+  try {
+    const rows = await supabaseRestRequest<ManagedUserRow[]>(
+      `/managed_users?select=id&id=eq.${encodeURIComponent(directId)}&limit=1`,
+      { accessToken },
+    );
+    const managedUserId = rows?.[0]?.id?.trim();
+    if (managedUserId) return managedUserId;
+  } catch (error) {
+    if (!canFallbackToLegacyFavoriteDances(error)) throw error;
+  }
+
+  throw new Error('managed_users kaydi bulunamadi. Lutfen kullanici-mapped managed_user kaydini kontrol edin.');
+}
+
+async function listManagedUserInterestDanceTypeIds(
+  accessToken: string,
+  managedUserId: string,
+): Promise<string[]> {
+  try {
+    const rows = await supabaseRestRequest<Array<{ dance_type_id?: string | null }>>(
+      `/managed_user_interest_dance_types?select=dance_type_id&user_id=eq.${encodeURIComponent(managedUserId)}`,
+      { accessToken },
+    );
+    return uniqueTrimmed((rows ?? []).map((row) => row.dance_type_id));
+  } catch (error) {
+    if (canFallbackToLegacyFavoriteDances(error)) return [];
+    throw error;
+  }
+}
+
+function selectProfileFields(includeDanceTypes: boolean): string {
+  const base = 'id,display_name,username,avatar_url,bio,city,favorite_dances,other_interests,notifications_enabled';
+  if (!includeDanceTypes) return base;
+  return `${base},managed_user_interest_dance_types(dance_type_id,dance_types(id,name,parent_id))`;
+}
+
+function canFallbackToLegacyFavoriteDances(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 400 || error.status === 404);
+}
+
+async function getProfileRow(accessToken: string, userId: string): Promise<SupabaseProfileRow | null> {
+  const relationSelect = selectProfileFields(true);
+  const legacySelect = selectProfileFields(false);
+
+  try {
+    const rows = await supabaseRestRequest<SupabaseProfileRow[]>(
+      `/profiles?select=${relationSelect}&id=eq.${encodeURIComponent(userId)}&limit=1`,
+      { accessToken },
+    );
+    return rows[0] ?? null;
+  } catch (error) {
+    if (!canFallbackToLegacyFavoriteDances(error)) throw error;
+    const rows = await supabaseRestRequest<SupabaseProfileRow[]>(
+      `/profiles?select=${legacySelect}&id=eq.${encodeURIComponent(userId)}&limit=1`,
+      { accessToken },
+    );
+    return rows[0] ?? null;
+  }
 }
 
 function buildProfileUpsert(
@@ -238,8 +381,9 @@ async function upsertProfileRow(
   accessToken: string,
   payload: SupabaseProfileUpsert,
 ): Promise<SupabaseProfileRow> {
+  const select = selectProfileFields(false);
   const response = await supabaseRestRequest<SupabaseProfileRow | SupabaseProfileRow[]>(
-    '/profiles?select=id,display_name,username,avatar_url,bio,city,favorite_dances,other_interests,notifications_enabled&on_conflict=id',
+    `/profiles?select=${select}&on_conflict=id`,
     {
       method: 'POST',
       accessToken,
@@ -256,6 +400,34 @@ async function upsertProfileRow(
   }
 
   return rows[0];
+}
+
+async function replaceManagedUserInterestDanceTypes(
+  managedUserId: string,
+  favoriteDanceIds: string[],
+  accessToken: string,
+): Promise<void> {
+  await supabaseRestRequest(
+    `/managed_user_interest_dance_types?user_id=eq.${encodeURIComponent(managedUserId)}`,
+    {
+      method: 'DELETE',
+      accessToken,
+      headers: { Prefer: 'return=minimal' },
+    },
+  );
+
+  const uniqueIds = uniqueTrimmed(favoriteDanceIds);
+  if (uniqueIds.length === 0) return;
+
+  await supabaseRestRequest('/managed_user_interest_dance_types', {
+    method: 'POST',
+    accessToken,
+    headers: { Prefer: 'return=minimal' },
+    body: uniqueIds.map((danceTypeId) => ({
+      user_id: managedUserId,
+      dance_type_id: danceTypeId,
+    })),
+  });
 }
 
 export type PublicProfileCard = {
@@ -277,7 +449,7 @@ export const profileService = {
         username: (row.username ?? '').trim(),
         avatarUrl: row.avatar_url?.trim() || null,
         bio: (row.bio ?? '').trim(),
-        favoriteDances: Array.isArray(row.favorite_dances) ? row.favorite_dances : [],
+        favoriteDances: await resolveProfileFavoriteDanceIds(row),
       };
     });
   },
@@ -293,9 +465,21 @@ export const profileService = {
           buildProfileUpsert(authUser.id, null, {}, authUser.user_metadata),
         );
       }
+      try {
+        const managedUserId = await resolveManagedUserId(accessToken, authUser.id);
+        const managedFavoriteDanceIds = await listManagedUserInterestDanceTypeIds(accessToken, managedUserId);
+        if (managedFavoriteDanceIds.length > 0) {
+          profileRow.favorite_dances = managedFavoriteDanceIds;
+        }
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes('managed_users')) {
+          throw error;
+        }
+      }
+      const user = await mapSupabaseProfile(authUser, profileRow);
 
       return {
-        user: mapSupabaseProfile(authUser, profileRow),
+        user,
       } satisfies MeResponseDto;
     });
 
@@ -340,9 +524,21 @@ export const profileService = {
         accessToken,
         buildProfileUpsert(currentAuthUser.id, currentProfileRow, normalizedUpdates, currentAuthUser.user_metadata),
       );
+      try {
+        const managedUserId = await resolveManagedUserId(accessToken, currentAuthUser.id);
+        await replaceManagedUserInterestDanceTypes(
+          managedUserId,
+          normalizedUpdates.favoriteDances ?? [],
+          accessToken,
+        );
+      } catch (error) {
+        if (!canFallbackToLegacyFavoriteDances(error)) throw error;
+      }
+      const refreshedProfileRow = await getProfileRow(accessToken, currentAuthUser.id);
+      const user = await mapSupabaseProfile(nextAuthUser, refreshedProfileRow ?? updatedProfileRow);
 
       return {
-        user: mapSupabaseProfile(nextAuthUser, updatedProfileRow),
+        user,
       } satisfies UpdateMeResponseDto;
     });
 
