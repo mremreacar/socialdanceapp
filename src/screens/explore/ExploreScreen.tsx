@@ -33,7 +33,7 @@ function schoolRowToExploreSchool(row: SchoolRow): School {
     id: row.id,
     name: row.name,
     location: [row.district, row.city].filter(Boolean).join(', ') || row.address?.trim() || '—',
-    image: row.image_url?.trim() || `https://picsum.photos/seed/${encodeURIComponent(row.id)}/400/280`,
+    image: row.image_url?.trim() || '',
     rating: typeof row.rating === 'number' && Number.isFinite(row.rating) ? row.rating : 0,
     ratingCount: typeof row.review_count === 'number' && Number.isFinite(row.review_count) ? row.review_count : 0,
     tags: row.category ? [row.category] : [],
@@ -330,6 +330,8 @@ export const ExploreScreen: React.FC = () => {
   const hasMoreLessons = filteredLessons.length > 5;
   const previewSchools = useMemo(() => filteredSchools.slice(0, 5), [filteredSchools]);
   const hasMoreSchools = filteredSchools.length > 5;
+  const previewInstructors = useMemo(() => filteredInstructors.slice(0, 5), [filteredInstructors]);
+  const hasMoreInstructors = filteredInstructors.length > 5;
   const isSearching = searchFocused || searchQuery.trim().length > 0;
   const hasAnySearchResult =
     previewEvents.length > 0 || previewLessons.length > 0 || filteredSchools.length > 0 || filteredInstructors.length > 0;
@@ -350,6 +352,9 @@ export const ExploreScreen: React.FC = () => {
   };
   const openAllEventsPage = () => {
     (navigation.getParent() as any)?.navigate('MainTabs', { screen: 'Favorites' });
+  };
+  const openLessonsPage = () => {
+    navigation.navigate('Lessons');
   };
   const openSchoolsPage = () => {
     (navigation.getParent() as any)?.navigate('MainTabs', { screen: 'Schools' });
@@ -509,7 +514,7 @@ export const ExploreScreen: React.FC = () => {
             </View>
             <View style={styles.sectionHeaderRight}>
               {hasMoreLessons ? (
-                <TouchableOpacity onPress={openAllEventsPage} activeOpacity={0.8} style={styles.viewAllButton}>
+                <TouchableOpacity onPress={openLessonsPage} activeOpacity={0.8} style={styles.viewAllButton}>
                   <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>Tümünü Gör</Text>
                 </TouchableOpacity>
               ) : null}
@@ -629,19 +634,21 @@ export const ExploreScreen: React.FC = () => {
                   <View style={[styles.countPill, { backgroundColor: 'rgba(238,43,238,0.16)' }]}>
                     <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>{filteredInstructors.length}</Text>
                   </View>
-                  <TouchableOpacity
-                    onPress={() => navigation.navigate('InstructorsList')}
-                    activeOpacity={0.8}
-                    style={styles.viewAllButton}
-                  >
-                    <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>Tümünü Gör</Text>
-                  </TouchableOpacity>
+                  {hasMoreInstructors ? (
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate('InstructorsList')}
+                      activeOpacity={0.8}
+                      style={styles.viewAllButton}
+                    >
+                      <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>Tümünü Gör</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </View>
             ) : null}
 
             {filteredInstructors.length > 0 ? (
-              filteredInstructors.map((instructor) => (
+              previewInstructors.map((instructor) => (
                 <View key={instructor.key} style={{ marginBottom: spacing.md }}>
                   {isSearching ? (
                     <View style={styles.itemBadgeWrap}>

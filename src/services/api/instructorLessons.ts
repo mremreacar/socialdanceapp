@@ -25,6 +25,8 @@ export type InstructorLessonModel = {
   participantLimit: number | null;
   currency: string;
   level: string;
+  lessonFormat: 'private' | 'group';
+  lessonDelivery: 'online' | 'in_person';
   isPublished: boolean;
   startsAt: string | null;
   endsAt: string | null;
@@ -44,6 +46,8 @@ export type InstructorLessonInput = {
   participantLimit?: number | null;
   currency?: string;
   level: string;
+  lessonFormat?: 'private' | 'group';
+  lessonDelivery?: 'online' | 'in_person';
   isPublished: boolean;
   schoolId?: string | null;
   startsAt: string | null;
@@ -122,6 +126,8 @@ type EventDanceTypeLinkRow = {
 type LessonMeta = {
   lesson_level?: string | null;
   lesson_is_published?: boolean | null;
+  lesson_format?: string | null;
+  lesson_delivery?: string | null;
   address?: string | null;
   formatted_address?: string | null;
   city?: string | null;
@@ -147,6 +153,7 @@ export type PublishedInstructorLessonListItem = InstructorLessonModel & {
   schoolDistrict: string | null;
   nextOccurrenceAt: string | null;
   scheduleSummary: string | null;
+  deliveryMode: 'online' | 'yuz_yuze';
 };
 
 const SCHEDULE_WEEKDAY_LABELS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
@@ -293,6 +300,8 @@ function extractLessonMeta(value: unknown): LessonMeta {
   return {
     lesson_level: typeof raw?.lesson_level === 'string' ? raw.lesson_level : null,
     lesson_is_published: typeof raw?.lesson_is_published === 'boolean' ? raw.lesson_is_published : null,
+    lesson_format: typeof raw?.lesson_format === 'string' ? raw.lesson_format : null,
+    lesson_delivery: typeof raw?.lesson_delivery === 'string' ? raw.lesson_delivery : null,
     address: typeof raw?.address === 'string' ? raw.address : null,
     formatted_address: typeof raw?.formatted_address === 'string' ? raw.formatted_address : null,
     city: typeof raw?.city === 'string' ? raw.city : null,
@@ -355,6 +364,10 @@ function serializeScheduleItems(slots: InstructorScheduleSlotModel[]): Record<st
 function mapLesson(row: SchoolEventLessonRow, instructorUserId?: string | null): InstructorLessonModel {
   const meta = extractLessonMeta(row.location_place);
   const address = meta.formatted_address?.trim() || meta.address?.trim() || null;
+  const lessonFormat: InstructorLessonModel['lessonFormat'] =
+    meta.lesson_format === 'private' ? 'private' : 'group';
+  const lessonDelivery: InstructorLessonModel['lessonDelivery'] =
+    meta.lesson_delivery === 'online' ? 'online' : 'in_person';
   return {
     id: row.id,
     instructorUserId: instructorUserId?.trim() || row.created_by?.trim() || '',
@@ -370,6 +383,8 @@ function mapLesson(row: SchoolEventLessonRow, instructorUserId?: string | null):
     participantLimit: typeof row.participant_limit === 'number' && row.participant_limit > 0 ? row.participant_limit : null,
     currency: (row.price_currency ?? 'TRY').trim() || 'TRY',
     level: (meta.lesson_level ?? '').trim() || 'Tüm Seviyeler',
+    lessonFormat,
+    lessonDelivery,
     isPublished: meta.lesson_is_published !== false,
     startsAt: row.starts_at ?? null,
     endsAt: row.ends_at ?? null,
@@ -493,6 +508,12 @@ function scheduleSummaryFromSlots(slots: InstructorScheduleSlotModel[]): string 
   return `${weekdayLabel} ${first.startTime}`;
 }
 
+function deliveryModeFromSlots(slots: InstructorScheduleSlotModel[]): 'online' | 'yuz_yuze' {
+  if (slots.length === 0) return 'yuz_yuze';
+  const hasInPerson = slots.some((slot) => slot.locationType === 'in_person' || slot.locationType === 'school');
+  return hasInPerson ? 'yuz_yuze' : 'online';
+}
+
 function nextOccurrenceFromSlots(slots: InstructorScheduleSlotModel[]): string | null {
   const nextDates = slots
     .map((slot) => nextOccurrenceFromSlot(slot))
@@ -522,6 +543,7 @@ function hydratePublishedLesson(
     schoolDistrict: school?.district?.trim() || null,
     nextOccurrenceAt: lesson.startsAt ?? nextOccurrenceFromSlots(schedule),
     scheduleSummary: scheduleSummaryFromSlots(schedule),
+    deliveryMode: lesson.lessonDelivery === 'online' ? 'online' : deliveryModeFromSlots(schedule),
   };
 }
 
@@ -540,6 +562,8 @@ async function attachInstructorIds(
 function buildLessonLocationPlace(input: {
   locationPlace?: Record<string, unknown> | null;
   level: string;
+  lessonFormat?: 'private' | 'group';
+  lessonDelivery?: 'online' | 'in_person';
   isPublished: boolean;
   location?: string | null;
   city?: string | null;
@@ -548,6 +572,8 @@ function buildLessonLocationPlace(input: {
   const next: Record<string, unknown> = {
     ...base,
     lesson_level: input.level.trim() || 'Tüm Seviyeler',
+    lesson_format: input.lessonFormat === 'private' ? 'private' : 'group',
+    lesson_delivery: input.lessonDelivery === 'online' ? 'online' : 'in_person',
     lesson_is_published: input.isPublished,
   };
   if (input.location?.trim()) {
@@ -646,6 +672,8 @@ export const instructorLessonsService = {
       const imageUrl = await uploadLessonCoverIfNeeded(accessToken, me, input.imageUri);
       const locationPlace = buildLessonLocationPlace({
         level: input.level,
+        lessonFormat: input.lessonFormat,
+        lessonDelivery: input.lessonDelivery,
         isPublished: input.isPublished,
         location: input.address ?? input.location,
         city: input.city,
@@ -706,6 +734,8 @@ export const instructorLessonsService = {
           lesson_is_published: currentMeta.lesson_is_published,
         },
         level: input.level,
+        lessonFormat: input.lessonFormat,
+        lessonDelivery: input.lessonDelivery,
         isPublished: input.isPublished,
         location: input.address ?? input.location,
         city: input.city,

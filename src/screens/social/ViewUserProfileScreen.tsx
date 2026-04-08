@@ -431,8 +431,10 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
               const slots = slotsByLesson.get(lesson.id) ?? [];
               const startsLabel = formatLessonStartsAt(lesson.startsAt);
               return (
-                <View
+                <TouchableOpacity
                   key={lesson.id}
+                  activeOpacity={0.85}
+                  onPress={() => navigation.navigate('ClassDetails', { id: lesson.id })}
                   style={{
                     backgroundColor: CARD_BG,
                     borderRadius: radius.lg,
@@ -465,7 +467,7 @@ export const ViewUserProfileScreen: React.FC<Props> = ({ route, navigation }) =>
                       ))}
                     </View>
                   ) : null}
-                </View>
+                </TouchableOpacity>
               );
             })}
           </>

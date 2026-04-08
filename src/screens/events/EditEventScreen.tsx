@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, KeyboardAvoidingView, Platform, ActivityIndicator, TextInput } from 'react-native';
 import { RouteProp, useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
@@ -12,8 +12,9 @@ import { ConfirmModal } from '../../components/feedback/ConfirmModal';
 import { useDanceCatalog } from '../../hooks/useDanceCatalog';
 import { hasSupabaseConfig } from '../../services/api/apiClient';
 import { instructorProfileService } from '../../services/api/instructorProfile';
-import { listSchools, type SchoolRow } from '../../services/api/schools';
+import { getSchoolById, listSchools, type SchoolRow } from '../../services/api/schools';
 import { createSchoolEvent, creatorSchoolEventsService } from '../../services/api/schoolEvents';
+import { instructorSchoolAssignmentsService, type AssignedSchoolItem } from '../../services/api/instructorSchoolAssignments';
 import { MainStackParamList } from '../../types/navigation';
 
 const formatEventDateTime = (d: Date): string => {
@@ -107,11 +108,6 @@ function parseTicketPrice(raw: string): number | null {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-const EVENT_TYPE_OPTIONS = [
-  { value: 'event' as const, label: 'Etkinlik', hint: 'Parti, sosyal, workshop veya festival gibi kayıtlar için.' },
-  { value: 'lesson' as const, label: 'Ders', hint: 'Yalnızca eğitmen profili olan hesaplar için.' },
-];
-
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 type EditEventRoute = RouteProp<MainStackParamList, 'EditEvent'>;
 
@@ -120,6 +116,8 @@ export const EditEventScreen: React.FC = () => {
   const route = useRoute<EditEventRoute>();
   const { colors, spacing, typography, radius, borders } = useTheme();
   const eventId = route.params?.eventId;
+  const preselectedSchoolId = route.params?.preselectedSchoolId ?? null;
+  const preselectedSchoolName = route.params?.preselectedSchoolName?.trim() || null;
   const isEditing = !!eventId;
   const {
     catalog,
@@ -131,8 +129,32 @@ export const EditEventScreen: React.FC = () => {
   const [mediaUris, setMediaUris] = useState<string[]>([]);
   const [schools, setSchools] = useState<SchoolRow[]>([]);
   const [schoolsLoading, setSchoolsLoading] = useState(true);
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
+  const [assignedSchools, setAssignedSchools] = useState<AssignedSchoolItem[]>([]);
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(preselectedSchoolId);
+  const [preselectedSchool, setPreselectedSchool] = useState<SchoolRow | null>(
+    preselectedSchoolId && preselectedSchoolName
+      ? {
+          id: preselectedSchoolId,
+          name: preselectedSchoolName,
+          category: null,
+          address: null,
+          city: null,
+          district: null,
+          latitude: null,
+          longitude: null,
+          rating: null,
+          review_count: null,
+          website: null,
+          telephone: null,
+          image_url: null,
+          current_status: null,
+          next_status: null,
+          snippet: null,
+        }
+      : null,
+  );
   const [showSchoolPicker, setShowSchoolPicker] = useState(false);
+  const [schoolSearchQuery, setSchoolSearchQuery] = useState('');
   const [eventDateTime, setEventDateTime] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState<Date | null>(null);
@@ -142,10 +164,9 @@ export const EditEventScreen: React.FC = () => {
   const [locationCity, setLocationCity] = useState<string | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [hasInstructorProfile, setHasInstructorProfile] = useState(false);
-  const [selectedEventType, setSelectedEventType] = useState<'event' | 'lesson'>('event');
-  const [showEventTypePicker, setShowEventTypePicker] = useState(false);
   const [selectedDanceTypeId, setSelectedDanceTypeId] = useState<string | null>(null);
   const [showDancePicker, setShowDancePicker] = useState(false);
+  const [danceSearchQuery, setDanceSearchQuery] = useState('');
   const [eventName, setEventName] = useState('');
   const [description, setDescription] = useState('');
   const [participantLimit, setParticipantLimit] = useState('');
@@ -160,10 +181,34 @@ export const EditEventScreen: React.FC = () => {
     () => schools.find((school) => school.id === selectedSchoolId) ?? null,
     [schools, selectedSchoolId],
   );
-  const selectedEventTypeMeta = useMemo(
-    () => EVENT_TYPE_OPTIONS.find((option) => option.value === selectedEventType) ?? EVENT_TYPE_OPTIONS[0],
-    [selectedEventType],
-  );
+  const availableSchools = useMemo(() => {
+    if (!preselectedSchool) return schools;
+    if (schools.some((school) => school.id === preselectedSchool.id)) return schools;
+    return [preselectedSchool, ...schools];
+  }, [preselectedSchool, schools]);
+  const visibleSelectedSchool = useMemo(() => {
+    if (selectedSchool) return selectedSchool;
+    if (preselectedSchool && preselectedSchool.id === selectedSchoolId) return preselectedSchool;
+    return null;
+  }, [preselectedSchool, selectedSchool, selectedSchoolId]);
+  const filteredSchools = useMemo(() => {
+    const query = schoolSearchQuery.trim().toLocaleLowerCase('tr-TR');
+    if (!query) return availableSchools;
+    return availableSchools.filter((school) => {
+      const haystack = [school.name, school.city, school.district]
+        .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+        .join(' ')
+        .toLocaleLowerCase('tr-TR');
+      return haystack.includes(query);
+    });
+  }, [availableSchools, schoolSearchQuery]);
+  const showIndependentEventOption = useMemo(() => {
+    const query = schoolSearchQuery.trim().toLocaleLowerCase('tr-TR');
+    if (!query) return true;
+    const label = 'bağımsız etkinlik';
+    const hint = 'sokakta açık alanda veya bir okula bağlı olmayan etkinlik';
+    return label.includes(query) || hint.includes(query);
+  }, [schoolSearchQuery]);
   const danceSections = useMemo(
     () =>
       catalog.map((category) => ({
@@ -176,6 +221,19 @@ export const EditEventScreen: React.FC = () => {
       })),
     [catalog],
   );
+  const filteredDanceSections = useMemo(() => {
+    const query = danceSearchQuery.trim().toLocaleLowerCase('tr-TR');
+    if (!query) return danceSections;
+    return danceSections
+      .map((section) => {
+        const categoryMatch = section.categoryName.toLocaleLowerCase('tr-TR').includes(query);
+        const options = categoryMatch
+          ? section.options
+          : section.options.filter((option) => option.name.toLocaleLowerCase('tr-TR').includes(query));
+        return { ...section, options };
+      })
+      .filter((section) => section.options.length > 0);
+  }, [danceSearchQuery, danceSections]);
   const selectedDanceTypeLabel = selectedDanceTypeId ? compactBySubId.get(selectedDanceTypeId) ?? '' : '';
   const screenTitle = isEditing ? 'Etkinlik Düzenle' : 'Etkinlik Oluştur';
   const submitLabel = isEditing ? 'Güncelle' : 'Yayınla';
@@ -183,7 +241,6 @@ export const EditEventScreen: React.FC = () => {
   const loadInstructorAccess = useCallback(async () => {
     if (!hasSupabaseConfig()) {
       setHasInstructorProfile(false);
-      setSelectedEventType((prev) => (prev === 'lesson' ? 'event' : prev));
       return;
     }
 
@@ -191,14 +248,10 @@ export const EditEventScreen: React.FC = () => {
       const row = await instructorProfileService.getMine();
       const allowed = !!row;
       setHasInstructorProfile(allowed);
-      if (!allowed) {
-        setSelectedEventType((prev) => (isEditing && prev === 'lesson' ? prev : 'event'));
-      }
     } catch {
       setHasInstructorProfile(false);
-      setSelectedEventType((prev) => (isEditing && prev === 'lesson' ? prev : 'event'));
     }
-  }, [isEditing]);
+  }, []);
 
   const loadEditableEvent = useCallback(async () => {
     if (!eventId) {
@@ -220,7 +273,6 @@ export const EditEventScreen: React.FC = () => {
 
       setSelectedSchoolId(row.school_id ?? null);
       setEventName(row.title?.trim() || '');
-      setSelectedEventType(row.event_type === 'lesson' ? 'lesson' : 'event');
       setDescription(row.description?.trim() || '');
       setLocationAddress(row.location?.trim() || null);
       setLocationCity(row.city?.trim() || null);
@@ -275,14 +327,6 @@ export const EditEventScreen: React.FC = () => {
       return;
     }
 
-    if (selectedEventType === 'lesson' && !hasInstructorProfile) {
-      setAlertModal({
-        title: 'Erişim gerekli',
-        message: 'Ders oluşturmak için önce eğitmen profili oluşturmanız gerekiyor.',
-      });
-      return;
-    }
-
     if (!eventDateTime || parsedParticipantLimit == null || parsedTicketPrice == null) {
       return;
     }
@@ -299,7 +343,7 @@ export const EditEventScreen: React.FC = () => {
         participantLimit: parsedParticipantLimit,
         priceAmount: parsedTicketPrice,
         priceCurrency: 'TRY',
-        eventType: selectedEventType,
+        eventType: 'event',
         danceTypeIds: selectedDanceTypeId ? [selectedDanceTypeId] : [],
         locationPlace: {
           address: locationAddress,
@@ -327,7 +371,7 @@ export const EditEventScreen: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [description, eventDateTime, eventId, eventName, hasInstructorProfile, isEditing, locationAddress, locationCity, participantLimit, selectedDanceTypeId, selectedEventType, selectedSchoolId, ticketPrice]);
+  }, [description, eventDateTime, eventId, eventName, isEditing, locationAddress, locationCity, participantLimit, selectedDanceTypeId, selectedSchoolId, ticketPrice]);
 
   useEffect(() => {
     if (showDatePicker) {
@@ -344,15 +388,113 @@ export const EditEventScreen: React.FC = () => {
         const rows = await listSchools({ limit: 200 });
         if (!cancelled) {
           setSchools(rows);
-          setSelectedSchoolId((prev) => (prev && rows.some((row) => row.id === prev) ? prev : null));
+          setSelectedSchoolId((prev) => {
+            if (preselectedSchoolId && rows.some((row) => row.id === preselectedSchoolId)) {
+              return preselectedSchoolId;
+            }
+            return prev && rows.some((row) => row.id === prev) ? prev : null;
+          });
         }
       } catch {
         if (!cancelled) {
           setSchools([]);
-          setSelectedSchoolId(null);
+          setSelectedSchoolId(preselectedSchoolId);
         }
       } finally {
         if (!cancelled) setSchoolsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [preselectedSchoolId]);
+
+  useEffect(() => {
+    if (!preselectedSchoolId) {
+      setPreselectedSchool(null);
+      return;
+    }
+
+    if (schools.some((school) => school.id === preselectedSchoolId)) {
+      setPreselectedSchool(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const row = await getSchoolById(preselectedSchoolId);
+        if (!cancelled) {
+          setPreselectedSchool(
+            row ??
+              (preselectedSchoolName
+                ? {
+                    id: preselectedSchoolId,
+                    name: preselectedSchoolName,
+                    category: null,
+                    address: null,
+                    city: null,
+                    district: null,
+                    latitude: null,
+                    longitude: null,
+                    rating: null,
+                    review_count: null,
+                    website: null,
+                    telephone: null,
+                    image_url: null,
+                    current_status: null,
+                    next_status: null,
+                    snippet: null,
+                  }
+                : null),
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setPreselectedSchool(
+            preselectedSchoolName
+              ? {
+                  id: preselectedSchoolId,
+                  name: preselectedSchoolName,
+                  category: null,
+                  address: null,
+                  city: null,
+                  district: null,
+                  latitude: null,
+                  longitude: null,
+                  rating: null,
+                  review_count: null,
+                  website: null,
+                  telephone: null,
+                  image_url: null,
+                  current_status: null,
+                  next_status: null,
+                  snippet: null,
+                }
+              : null,
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [preselectedSchoolId, preselectedSchoolName, schools]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await instructorSchoolAssignmentsService.listMine();
+        if (!cancelled) {
+          setAssignedSchools(rows);
+        }
+      } catch {
+        if (!cancelled) {
+          setAssignedSchools([]);
+        }
       }
     })();
 
@@ -374,6 +516,11 @@ export const EditEventScreen: React.FC = () => {
       setTempTime(now);
     }
     setShowDatePicker(true);
+  };
+
+  const openSchoolPicker = () => {
+    setSchoolSearchQuery('');
+    setShowSchoolPicker(true);
   };
 
   const onSelectDate = (d: Date) => {
@@ -484,6 +631,17 @@ export const EditEventScreen: React.FC = () => {
     }
   };
 
+  const useSelectedSchoolAsLocation = useCallback(() => {
+    if (!visibleSelectedSchool) return;
+    const nextCity = visibleSelectedSchool.city?.trim() || null;
+    const district = visibleSelectedSchool.district?.trim();
+    const suffix = [district, nextCity].filter((part): part is string => Boolean(part && part.length > 0)).join(', ');
+    const nextLocation = suffix ? `${visibleSelectedSchool.name}, ${suffix}` : visibleSelectedSchool.name;
+    setLocationAddress(nextLocation);
+    setLocationCity(nextCity);
+    setErrors((e) => ({ ...e, location: '' }));
+  }, [visibleSelectedSchool]);
+
   return (
     <Screen>
       <ConfirmModal
@@ -534,7 +692,7 @@ export const EditEventScreen: React.FC = () => {
           <View style={{ height: spacing.xs }} />
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={() => !schoolsLoading && setShowSchoolPicker(true)}
+            onPress={() => !schoolsLoading && openSchoolPicker()}
             disabled={schoolsLoading}
             style={[
               styles.dateInputRow,
@@ -556,16 +714,49 @@ export const EditEventScreen: React.FC = () => {
               </>
             ) : (
               <>
-                <Text style={[typography.body, { color: selectedSchool ? '#FFFFFF' : '#6B7280', flex: 1 }]} numberOfLines={1}>
-                  {selectedSchool?.name || 'İstersen okul seç'}
+                <Text style={[typography.body, { color: visibleSelectedSchool ? '#FFFFFF' : '#6B7280', flex: 1 }]} numberOfLines={1}>
+                  {visibleSelectedSchool?.name || 'İstersen okul seç'}
                 </Text>
                 <Icon name="chevron-down" size={20} color="#FFFFFF" style={{ marginLeft: spacing.sm }} />
               </>
             )}
           </TouchableOpacity>
           <Text style={[typography.caption, { color: '#9CA3AF', marginTop: spacing.xs }]}>
-            Sokakta veya bağımsız düzenlenen etkinliklerde bu alanı boş bırakabilirsin.
+            {preselectedSchoolId
+              ? 'Bu ekran atanmış olduğun okul seçili şekilde açıldı. İstersen başka okul da seçebilirsin.'
+              : 'Sokakta veya bağımsız düzenlenen etkinliklerde bu alanı boş bırakabilirsin.'}
           </Text>
+          {assignedSchools.length > 0 ? (
+            <View style={{ marginTop: spacing.md }}>
+              <Text style={[typography.captionBold, { color: colors.primary, marginBottom: spacing.xs }]}>
+                Hızlı seçim
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+                {assignedSchools.map((school) => {
+                  const selected = selectedSchoolId === school.schoolId;
+                  return (
+                    <TouchableOpacity
+                      key={school.schoolId}
+                      activeOpacity={0.8}
+                      onPress={() => setSelectedSchoolId(school.schoolId)}
+                      style={{
+                        paddingHorizontal: spacing.md,
+                        paddingVertical: spacing.sm,
+                        borderRadius: radius.xl,
+                        borderWidth: 1,
+                        borderColor: selected ? colors.primary : 'rgba(255,255,255,0.12)',
+                        backgroundColor: selected ? 'rgba(255,255,255,0.12)' : 'transparent',
+                      }}
+                    >
+                      <Text style={[typography.captionBold, { color: '#FFFFFF' }]} numberOfLines={1}>
+                        {school.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
         </View>
         <Input
           label="Etkinlik adı"
@@ -583,44 +774,6 @@ export const EditEventScreen: React.FC = () => {
           error={errors.eventName}
           required
         />
-        <View style={{ marginTop: spacing.lg }}>
-          <View style={[styles.labelRow, { marginBottom: spacing.xs }]}>
-            <View style={[styles.leftIconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100, marginRight: spacing.sm }]}>
-              <Icon name="shape-outline" size={18} color={colors.primary} />
-            </View>
-            <Text style={[typography.label, { color: '#9CA3AF' }]}>Etkinlik Tipi</Text>
-          </View>
-          <View style={{ height: spacing.xs }} />
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => setShowEventTypePicker(true)}
-            style={[
-              styles.dateInputRow,
-              {
-                backgroundColor: 'transparent',
-                borderRadius: radius.xl,
-                borderWidth: borders.thin,
-                borderColor: 'rgba(255,255,255,0.12)',
-                paddingHorizontal: spacing.lg,
-              },
-            ]}
-          >
-            <View style={{ flex: 1, paddingRight: spacing.md }}>
-              <Text style={[typography.body, { color: '#FFFFFF' }]} numberOfLines={1}>
-                {selectedEventTypeMeta.label}
-              </Text>
-              <Text style={[typography.caption, { color: '#9CA3AF', marginTop: 4 }]} numberOfLines={2}>
-                {selectedEventTypeMeta.hint}
-              </Text>
-            </View>
-            <Icon name="chevron-down" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-          {!hasInstructorProfile ? (
-            <Text style={[typography.caption, { color: '#9CA3AF', marginTop: spacing.xs }]}>
-              Eğitmen profili olmayan hesaplar yalnızca etkinlik tipi ile kayıt oluşturabilir.
-            </Text>
-          ) : null}
-        </View>
         <Input
           label="Açıklama"
           placeholder=""
@@ -790,7 +943,12 @@ export const EditEventScreen: React.FC = () => {
           <Modal transparent animationType="slide">
             <View style={styles.modalContainer}>
               <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setShowSchoolPicker(false)} />
-              <View style={[styles.pickerSheet, { backgroundColor: '#2d1b2e', maxHeight: '55%' }]}>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+                style={styles.schoolPickerKeyboardWrap}
+              >
+              <View style={[styles.pickerSheet, styles.schoolPickerSheet, { backgroundColor: '#2d1b2e' }]}>
                 <View style={[styles.pickerHeader, { borderBottomColor: 'rgba(255,255,255,0.12)' }]}>
                   <TouchableOpacity onPress={() => setShowSchoolPicker(false)} hitSlop={12}>
                     <Text style={[typography.body, { color: '#9CA3AF' }]}>İptal</Text>
@@ -798,33 +956,59 @@ export const EditEventScreen: React.FC = () => {
                   <Text style={[typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>Okul seçin</Text>
                   <View style={{ width: 40 }} />
                 </View>
-                <ScrollView style={{ maxHeight: 320 }} contentContainerStyle={{ paddingVertical: 8 }} showsVerticalScrollIndicator={false}>
-                  <TouchableOpacity
-                    style={[styles.pickerRow, { backgroundColor: selectedSchoolId === null ? 'rgba(255,255,255,0.12)' : 'transparent' }]}
-                    onPress={() => {
-                      setSelectedSchoolId(null);
-                      setShowSchoolPicker(false);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={{ flex: 1, paddingRight: spacing.md }}>
-                      <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]} numberOfLines={1}>
-                        Bağımsız etkinlik
-                      </Text>
-                      <Text style={[typography.caption, { color: '#9CA3AF', marginTop: 4 }]} numberOfLines={2}>
-                        Sokakta, açık alanda veya bir okula bağlı olmayan etkinlik
-                      </Text>
-                    </View>
-                    {selectedSchoolId === null && <Icon name="check" size={20} color={colors.primary} />}
-                  </TouchableOpacity>
+                <View style={styles.schoolSearchWrap}>
+                  <Icon name="magnify" size={18} color="#9CA3AF" />
+                  <TextInput
+                    value={schoolSearchQuery}
+                    onChangeText={setSchoolSearchQuery}
+                    placeholder="Okul ara"
+                    placeholderTextColor="#6B7280"
+                    style={[typography.body, styles.schoolSearchInput]}
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    returnKeyType="search"
+                  />
+                </View>
+                <ScrollView
+                  style={styles.schoolPickerList}
+                  contentContainerStyle={{ paddingVertical: 8 }}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {showIndependentEventOption ? (
+                    <TouchableOpacity
+                      style={[styles.pickerRow, { backgroundColor: selectedSchoolId === null ? 'rgba(255,255,255,0.12)' : 'transparent' }]}
+                      onPress={() => {
+                        setSelectedSchoolId(null);
+                        setShowSchoolPicker(false);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flex: 1, paddingRight: spacing.md }}>
+                        <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]} numberOfLines={1}>
+                          Bağımsız etkinlik
+                        </Text>
+                        <Text style={[typography.caption, { color: '#9CA3AF', marginTop: 4 }]} numberOfLines={2}>
+                          Sokakta, açık alanda veya bir okula bağlı olmayan etkinlik
+                        </Text>
+                      </View>
+                      {selectedSchoolId === null && <Icon name="check" size={20} color={colors.primary} />}
+                    </TouchableOpacity>
+                  ) : null}
                   {schools.length === 0 ? (
                     <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.xl }}>
                       <Text style={[typography.bodySmall, { color: '#9CA3AF', textAlign: 'center' }]}>
                         Şu anda seçilebilir okul bulunamadı. İstersen bağımsız etkinlik olarak devam edebilirsin.
                       </Text>
                     </View>
+                  ) : filteredSchools.length === 0 && !showIndependentEventOption ? (
+                    <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.xl }}>
+                      <Text style={[typography.bodySmall, { color: '#9CA3AF', textAlign: 'center' }]}>
+                        Aramanla eşleşen okul bulunamadı.
+                      </Text>
+                    </View>
                   ) : (
-                    schools.map((school) => (
+                    filteredSchools.map((school) => (
                       <TouchableOpacity
                         key={school.id}
                         style={[styles.pickerRow, { backgroundColor: selectedSchoolId === school.id ? 'rgba(255,255,255,0.12)' : 'transparent' }]}
@@ -851,53 +1035,7 @@ export const EditEventScreen: React.FC = () => {
                   )}
                 </ScrollView>
               </View>
-            </View>
-          </Modal>
-        )}
-        {showEventTypePicker && (
-          <Modal transparent animationType="slide">
-            <View style={styles.modalContainer}>
-              <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setShowEventTypePicker(false)} />
-              <View style={[styles.pickerSheet, { backgroundColor: '#2d1b2e', maxHeight: '40%' }]}>
-                <View style={[styles.pickerHeader, { borderBottomColor: 'rgba(255,255,255,0.12)' }]}>
-                  <TouchableOpacity onPress={() => setShowEventTypePicker(false)} hitSlop={12}>
-                    <Text style={[typography.body, { color: '#9CA3AF' }]}>İptal</Text>
-                  </TouchableOpacity>
-                  <Text style={[typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>Etkinlik tipi seçin</Text>
-                  <View style={{ width: 40 }} />
-                </View>
-                <View style={{ paddingVertical: 8 }}>
-                  {EVENT_TYPE_OPTIONS.map((option) => {
-                    const selected = selectedEventType === option.value;
-                    const disabled = option.value === 'lesson' && !hasInstructorProfile;
-                    return (
-                      <TouchableOpacity
-                        key={option.value}
-                        style={[
-                          styles.pickerRow,
-                          { backgroundColor: selected ? 'rgba(255,255,255,0.12)' : 'transparent', opacity: disabled ? 0.55 : 1 },
-                        ]}
-                        onPress={() => {
-                          if (disabled) return;
-                          setSelectedEventType(option.value);
-                          setShowEventTypePicker(false);
-                        }}
-                        activeOpacity={disabled ? 1 : 0.7}
-                      >
-                        <View style={{ flex: 1, paddingRight: spacing.md }}>
-                          <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]}>{option.label}</Text>
-                          <Text style={[typography.caption, { color: '#9CA3AF', marginTop: 4 }]}>{option.hint}</Text>
-                        </View>
-                        {disabled ? (
-                          <Icon name="lock-outline" size={20} color="#9CA3AF" />
-                        ) : selected ? (
-                          <Icon name="check" size={20} color={colors.primary} />
-                        ) : null}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
+              </KeyboardAvoidingView>
             </View>
           </Modal>
         )}
@@ -910,26 +1048,52 @@ export const EditEventScreen: React.FC = () => {
             <Text style={[typography.label, { color: colors.error, marginLeft: 2 }]}>*</Text>
           </View>
           <View style={{ height: spacing.xs }} />
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={pickLocation}
-            disabled={locationLoading}
-            style={[
-              styles.dateInputRow,
-              {
-                backgroundColor: 'transparent',
-                borderRadius: radius.xl,
-                borderWidth: borders.thin,
-                borderColor: errors.location ? colors.error : 'rgba(255,255,255,0.12)',
-                paddingHorizontal: spacing.lg,
-              },
-            ]}
-          >
-            <Text style={[typography.body, { color: locationAddress ? '#FFFFFF' : '#6B7280', flex: 1 }]} numberOfLines={2}>
-              {locationLoading ? 'Konum alınıyor...' : locationAddress || 'Konum seçin'}
-            </Text>
-            <Icon name={locationAddress ? 'pencil' : 'map-marker'} size={20} color="#FFFFFF" style={{ marginLeft: spacing.sm }} />
-          </TouchableOpacity>
+          <Input
+            placeholder="Okul adı, mekan adı veya açık adres yazın"
+            value={locationAddress ?? ''}
+            onChangeText={(text) => {
+              const trimmed = text.trim();
+              setLocationAddress(trimmed.length > 0 ? text : null);
+              if (errors.location) setErrors((e) => ({ ...e, location: '' }));
+            }}
+            leftIcon="map-marker"
+            leftIconColor={colors.primary}
+            backgroundColor="transparent"
+            borderColor={errors.location ? colors.error : 'rgba(255,255,255,0.12)'}
+            style={{ color: '#FFFFFF' }}
+            placeholderTextColor="#6B7280"
+            containerStyle={{ marginTop: 0 }}
+          />
+          <View style={[styles.locationActionsRow, { marginTop: spacing.sm }]}>
+            {visibleSelectedSchool ? (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={useSelectedSchoolAsLocation}
+                style={[styles.locationActionButton, { borderColor: 'rgba(255,255,255,0.2)' }]}
+              >
+                <Icon name="school" size={16} color={colors.primary} />
+                <Text style={[typography.captionBold, styles.locationActionLabel]}>Okulu kullan</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={pickLocation}
+              disabled={locationLoading}
+              style={[
+                styles.locationActionButton,
+                { borderColor: 'rgba(255,255,255,0.2)', opacity: locationLoading ? 0.6 : 1 },
+              ]}
+            >
+              {locationLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Icon name="crosshairs-gps" size={16} color={colors.primary} />
+              )}
+              <Text style={[typography.captionBold, styles.locationActionLabel]}>
+                {locationLoading ? 'Alınıyor...' : 'Konumumdan doldur'}
+              </Text>
+            </TouchableOpacity>
+          </View>
           {errors.location ? <Text style={[typography.caption, { color: colors.error, marginTop: spacing.xs }]}>{errors.location}</Text> : null}
         </View>
         <View style={{ marginTop: spacing.lg }}>
@@ -966,16 +1130,52 @@ export const EditEventScreen: React.FC = () => {
         {showDancePicker && (
           <Modal transparent animationType="slide">
             <View style={styles.modalContainer}>
-              <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setShowDancePicker(false)} />
-              <View style={[styles.pickerSheet, { backgroundColor: '#2d1b2e', maxHeight: '50%' }]}>
+              <TouchableOpacity
+                activeOpacity={1}
+                style={styles.modalOverlay}
+                onPress={() => {
+                  setDanceSearchQuery('');
+                  setShowDancePicker(false);
+                }}
+              />
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+                style={styles.dancePickerKeyboardWrap}
+              >
+              <View style={[styles.pickerSheet, styles.dancePickerSheet, { backgroundColor: '#2d1b2e' }]}>
               <View style={[styles.pickerHeader, { borderBottomColor: 'rgba(255,255,255,0.12)' }]}>
-                <TouchableOpacity onPress={() => setShowDancePicker(false)} hitSlop={12}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setDanceSearchQuery('');
+                    setShowDancePicker(false);
+                  }}
+                  hitSlop={12}
+                >
                   <Text style={[typography.body, { color: '#9CA3AF' }]}>İptal</Text>
                 </TouchableOpacity>
                 <Text style={[typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>Dans türü seçin</Text>
                 <View style={{ width: 40 }} />
               </View>
-              <ScrollView style={{ maxHeight: 280 }} contentContainerStyle={{ paddingVertical: 8 }} showsVerticalScrollIndicator={false}>
+              <View style={styles.danceSearchWrap}>
+                <Icon name="magnify" size={18} color="#9CA3AF" />
+                <TextInput
+                  value={danceSearchQuery}
+                  onChangeText={setDanceSearchQuery}
+                  placeholder="Dans türü ara"
+                  placeholderTextColor="#6B7280"
+                  style={[typography.body, styles.danceSearchInput]}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                />
+              </View>
+              <ScrollView
+                style={styles.dancePickerList}
+                contentContainerStyle={{ paddingVertical: 8 }}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
                 {danceCatalogLoading ? (
                   <View style={{ paddingVertical: spacing.xl, alignItems: 'center' }}>
                     <ActivityIndicator color={colors.primary} />
@@ -992,12 +1192,12 @@ export const EditEventScreen: React.FC = () => {
                       <Text style={[typography.captionBold, { color: colors.primary }]}>Tekrar dene</Text>
                     </TouchableOpacity>
                   </View>
-                ) : danceSections.length === 0 ? (
+                ) : filteredDanceSections.length === 0 ? (
                   <Text style={[typography.caption, { color: '#9CA3AF', textAlign: 'center', paddingVertical: spacing.xl }]}>
-                    Dans türü bulunamadı.
+                    Aramanla eşleşen dans türü bulunamadı.
                   </Text>
                 ) : (
-                  danceSections.map((section) => (
+                  filteredDanceSections.map((section) => (
                     <View key={section.categoryId} style={{ marginBottom: spacing.md }}>
                       <Text style={[typography.captionBold, { color: '#9CA3AF', paddingHorizontal: spacing.lg, marginBottom: spacing.xs }]}>
                         {section.categoryName}
@@ -1011,6 +1211,7 @@ export const EditEventScreen: React.FC = () => {
                             onPress={() => {
                               setSelectedDanceTypeId(option.id);
                               setErrors((e) => ({ ...e, danceType: '' }));
+                              setDanceSearchQuery('');
                               setShowDancePicker(false);
                             }}
                             activeOpacity={0.7}
@@ -1025,6 +1226,7 @@ export const EditEventScreen: React.FC = () => {
                 )}
               </ScrollView>
               </View>
+              </KeyboardAvoidingView>
             </View>
           </Modal>
         )}
@@ -1116,6 +1318,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     height: 52,
+  },
+  multiLineInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 64,
+    paddingVertical: 10,
   },
   labelRow: {
     flexDirection: 'row',
@@ -1220,6 +1428,79 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     minHeight: 52,
+  },
+  schoolSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+    marginHorizontal: 8,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  schoolPickerKeyboardWrap: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  schoolPickerSheet: {
+    height: '78%',
+  },
+  dancePickerKeyboardWrap: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  dancePickerSheet: {
+    height: '62%',
+  },
+  dancePickerList: {
+    flex: 1,
+    maxHeight: 360,
+  },
+  schoolPickerList: {
+    flex: 1,
+  },
+  schoolSearchInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    paddingVertical: 10,
+  },
+  danceSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+    marginHorizontal: 8,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  danceSearchInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    paddingVertical: 10,
+  },
+  locationActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  locationActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  locationActionLabel: {
+    color: '#FFFFFF',
+    marginLeft: 6,
   },
   mediaInputBox: {
     borderWidth: 1,

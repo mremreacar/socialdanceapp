@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createDrawerNavigator, DrawerContentComponentProps } from '@react-navigation/drawer';
@@ -10,6 +10,8 @@ import { Icon, IconName } from '../components/ui/Icon';
 import { Avatar } from '../components/ui/Avatar';
 import { Divider } from '../components/ui/Divider';
 import { authService } from '../services/api/auth';
+import { hasSupabaseConfig } from '../services/api/apiClient';
+import { instructorProfileService } from '../services/api/instructorProfile';
 
 interface MenuItem {
   label: string;
@@ -18,24 +20,67 @@ interface MenuItem {
   params?: any;
 }
 
-const menuItems: MenuItem[] = [
-  { label: 'Keşfet', icon: 'compass-outline', route: 'Explore' },
-  { label: 'Okullar', icon: 'school-outline', route: 'Schools' },
-  { label: 'Kullanıcı Paneli', icon: 'view-dashboard-outline', route: 'UserPanel' },
-  { label: 'DanceStar', icon: 'crown-outline', route: 'DanceStar' },
-  { label: 'DanceCircle', icon: 'human-female-dance', route: 'DanceCircle' },
-  { label: 'Profil', icon: 'account-outline', route: 'Profile' },
-  { label: 'Mesajlar', icon: 'message-outline', route: 'ChatList' },
-];
+type MenuSection = {
+  title: string;
+  items: MenuItem[];
+};
 
 const CustomDrawerContent: React.FC<DrawerContentComponentProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { colors, typography, spacing, radius } = useTheme();
   const { profile, avatarSource } = useProfile();
+  const [hasInstructorProfile, setHasInstructorProfile] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!hasSupabaseConfig()) {
+        if (!cancelled) setHasInstructorProfile(false);
+        return;
+      }
+      try {
+        const row = await instructorProfileService.getMine();
+        if (!cancelled) setHasInstructorProfile(!!row);
+      } catch {
+        if (!cancelled) setHasInstructorProfile(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile.username]);
+
+  const menuSections: MenuSection[] = useMemo(() => [
+    {
+      title: 'Keşif',
+      items: [
+        { label: 'Keşfet', icon: 'compass-outline', route: 'Explore' },
+        { label: 'Okullar', icon: 'school-outline', route: 'Schools' },
+        { label: 'DanceCircle', icon: 'human-female-dance', route: 'DanceCircle' },
+        { label: 'DanceStar', icon: 'crown-outline', route: 'DanceStar' },
+      ],
+    },
+    {
+      title: 'İçerikler',
+      items: [
+        { label: 'Etkinlikler', icon: 'calendar-outline', route: 'Favorites' },
+        { label: 'Dersler', icon: 'school-outline', route: 'Lessons' },
+        { label: 'Mesajlar', icon: 'message-outline', route: 'ChatList' },
+      ],
+    },
+    {
+      title: 'Hesap',
+      items: [
+        { label: 'Profil', icon: 'account-outline', route: 'Profile' },
+        { label: hasInstructorProfile ? 'Eğitmen Paneli' : 'Eğitmen Ol', icon: 'account-star-outline', route: 'InstructorOnboarding' },
+        { label: 'Kullanıcı Paneli', icon: 'view-dashboard-outline', route: 'UserPanel' },
+      ],
+    },
+  ], [hasInstructorProfile]);
 
   const handleNavigate = (item: MenuItem) => {
     navigation.closeDrawer();
-    const tabRoutes = ['Explore', 'Schools', 'DanceCircle', 'Favorites', 'Profile'];
+    const tabRoutes = ['Explore', 'Schools', 'DanceCircle', 'Favorites', 'Lessons', 'Profile'];
     if (tabRoutes.includes(item.route)) {
       navigation.navigate('Main', {
         screen: 'MainTabs',
@@ -85,18 +130,25 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = ({ navigation
       <Divider />
 
       <ScrollView style={styles.menuList} showsVerticalScrollIndicator={false}>
-        {menuItems.map((item, index) => (
-          <TouchableOpacity
-            key={index}
-            onPress={() => handleNavigate(item)}
-            style={[styles.menuItem, { paddingHorizontal: spacing.xl, paddingVertical: spacing.lg }]}
-            activeOpacity={0.7}
-          >
-            <Icon name={item.icon} size={22} color={colors.headerText} />
-            <Text style={[typography.bodyMedium, { color: colors.headerText, marginLeft: spacing.lg }]}>
-              {item.label}
+        {menuSections.map((section) => (
+          <View key={section.title} style={{ paddingTop: spacing.xs }}>
+            <Text style={[typography.captionBold, { color: colors.textSecondary, opacity: 0.85, paddingHorizontal: spacing.xl, marginBottom: 2 }]}>
+              {section.title}
             </Text>
-          </TouchableOpacity>
+            {section.items.map((item) => (
+              <TouchableOpacity
+                key={item.route}
+                onPress={() => handleNavigate(item)}
+                style={[styles.menuItem, { paddingHorizontal: spacing.xl, paddingVertical: spacing.md }]}
+                activeOpacity={0.7}
+              >
+                <Icon name={item.icon} size={22} color={colors.headerText} />
+                <Text style={[typography.bodyMedium, { color: colors.headerText, marginLeft: spacing.lg }]}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         ))}
       </ScrollView>
 

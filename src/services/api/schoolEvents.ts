@@ -1,5 +1,6 @@
 import { ApiError, supabaseAuthRequest, supabaseRestRequest } from './apiClient';
 import { storage } from '../storage';
+import { listAssignedSchoolIdsForUser } from './instructorSchoolAssignments';
 
 export type SchoolEventRow = {
   id: string;
@@ -372,12 +373,7 @@ export const instructorSchoolEventsService = {
   async listMine(): Promise<ManagedSchoolEventItem[]> {
     return await withAuthorizedUserRequest(async (accessToken) => {
       const me = await getMyUserId(accessToken);
-      const assignments = await supabaseRestRequest<{ school_id: string }[]>(
-        `/school_instructor_assignments?select=school_id&user_id=eq.${encodeURIComponent(me)}`,
-        { method: 'GET', accessToken },
-      );
-
-      const schoolIds = [...new Set((assignments ?? []).map((row) => row.school_id).filter(Boolean))];
+      const schoolIds = await listAssignedSchoolIdsForUser(accessToken, me);
       if (schoolIds.length === 0) return [];
 
       const idIn = schoolIds.map((id) => encodeURIComponent(id)).join(',');

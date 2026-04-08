@@ -10,6 +10,8 @@ export type AssignedSchoolItem = {
   imageUrl: string | null;
   telephone: string | null;
   assignedAt: string;
+  isInstructor: boolean;
+  isOwner: boolean;
 };
 
 type SupabaseUserResponse = { id: string };
@@ -28,6 +30,16 @@ type SchoolRow = {
   address: string | null;
   image_url: string | null;
   telephone: string | null;
+};
+
+type LinkedSchoolRow = {
+  school_id: string;
+};
+
+type AssignmentLikeRow = {
+  school_id: string;
+  created_at?: string | null;
+  source: 'instructor' | 'owner' | 'legacy';
 };
 
 async function refreshAccessToken(): Promise<string | null> {
@@ -64,16 +76,47 @@ async function getMyUserId(accessToken: string): Promise<string> {
   return user.id;
 }
 
+async function listAssignmentRows(accessToken: string, userId: string): Promise<AssignmentLikeRow[]> {
+  const [instructorRows, ownerRows, legacyRows] = await Promise.all([
+    supabaseRestRequest<LinkedSchoolRow[]>(
+      `/school_instructors?select=school_id&user_id=eq.${encodeURIComponent(userId)}`,
+      { method: 'GET', accessToken },
+    ).catch(() => []),
+    supabaseRestRequest<LinkedSchoolRow[]>(
+      `/school_owners?select=school_id&user_id=eq.${encodeURIComponent(userId)}`,
+      { method: 'GET', accessToken },
+    ).catch(() => []),
+    supabaseRestRequest<AssignmentRow[]>(
+      `/school_instructor_assignments?select=school_id,created_at&user_id=eq.${encodeURIComponent(userId)}&order=created_at.asc`,
+      { method: 'GET', accessToken },
+    ).catch(() => []),
+  ]);
+
+  return [
+    ...(instructorRows ?? []).map((row) => ({ school_id: row.school_id, created_at: null, source: 'instructor' as const })),
+    ...(ownerRows ?? []).map((row) => ({ school_id: row.school_id, created_at: null, source: 'owner' as const })),
+    ...(legacyRows ?? []).map((row) => ({ school_id: row.school_id, created_at: row.created_at, source: 'legacy' as const })),
+  ].filter((row) => typeof row.school_id === 'string' && row.school_id.trim() !== '');
+}
+
+export async function listAssignedSchoolIdsForUser(accessToken: string, userId: string): Promise<string[]> {
+  const rows = await listAssignmentRows(accessToken, userId);
+  return [...new Set(rows.map((row) => row.school_id).filter(Boolean))];
+}
+
+export async function listMyAssignedSchoolIds(): Promise<string[]> {
+  return await withAuthorizedUserRequest(async (accessToken) => {
+    const me = await getMyUserId(accessToken);
+    return await listAssignedSchoolIdsForUser(accessToken, me);
+  });
+}
+
 export const instructorSchoolAssignmentsService = {
-  /** Yönetici ataması olan okullar (yoksa []). */
+  /** Kullanıcının eğitmen/yönetici olarak bağlı olduğu okullar (yoksa []). */
   async listMine(): Promise<AssignedSchoolItem[]> {
     return await withAuthorizedUserRequest(async (accessToken) => {
       const me = await getMyUserId(accessToken);
-      const assignRows = await supabaseRestRequest<AssignmentRow[]>(
-        `/school_instructor_assignments?select=school_id,created_at&user_id=eq.${encodeURIComponent(me)}&order=created_at.asc`,
-        { method: 'GET', accessToken },
-      );
-      const list = assignRows ?? [];
+      const list = await listAssignmentRows(accessToken, me);
       if (list.length === 0) return [];
 
       const ids = [...new Set(list.map((r) => r.school_id).filter(Boolean))];
@@ -83,18 +126,33 @@ export const instructorSchoolAssignmentsService = {
         { method: 'GET', accessToken },
       );
       const byId = new Map((schoolRows ?? []).map((s) => [s.id, s]));
+      const assignedAtBySchoolId = new Map<string, string>();
+      const roleFlagsBySchoolId = new Map<string, { isInstructor: boolean; isOwner: boolean }>();
+      list.forEach((row) => {
+        if (assignedAtBySchoolId.has(row.school_id)) return;
+        assignedAtBySchoolId.set(row.school_id, row.created_at?.trim() || '');
+      });
+      list.forEach((row) => {
+        const current = roleFlagsBySchoolId.get(row.school_id) ?? { isInstructor: false, isOwner: false };
+        if (row.source === 'owner') current.isOwner = true;
+        if (row.source === 'instructor' || row.source === 'legacy' || row.source === 'owner') current.isInstructor = true;
+        roleFlagsBySchoolId.set(row.school_id, current);
+      });
 
-      return list.map((a) => {
-        const s = byId.get(a.school_id);
+      return ids.map((schoolId) => {
+        const s = byId.get(schoolId);
+        const flags = roleFlagsBySchoolId.get(schoolId) ?? { isInstructor: false, isOwner: false };
         return {
-          schoolId: a.school_id,
+          schoolId,
           name: (s?.name ?? 'Okul').trim() || 'Okul',
           city: s?.city ?? null,
           district: s?.district ?? null,
           address: s?.address ?? null,
           imageUrl: s?.image_url ?? null,
           telephone: s?.telephone ?? null,
-          assignedAt: a.created_at,
+          assignedAt: assignedAtBySchoolId.get(schoolId) ?? '',
+          isInstructor: flags.isInstructor,
+          isOwner: flags.isOwner,
         };
       });
     });

@@ -1,15 +1,23 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, KeyboardAvoidingView, Platform, ActivityIndicator, TextInput } from 'react-native';
+import { RouteProp, useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
 import { Header } from '../../components/layout/Header';
 import { Button } from '../../components/ui/Button';
+import { Chip } from '../../components/ui/Chip';
 import { Input } from '../../components/ui/Input';
 import { Icon } from '../../components/ui/Icon';
 import { ConfirmModal } from '../../components/feedback/ConfirmModal';
+import { LessonDateTimeField } from '../../components/instructor/LessonDateTimeField';
+import { useDanceCatalog } from '../../hooks/useDanceCatalog';
 import { hasSupabaseConfig } from '../../services/api/apiClient';
-import { instructorProfileService } from '../../services/api/instructorProfile';
+import { instructorProfileService, type ExploreInstructorListItem } from '../../services/api/instructorProfile';
+import { instructorLessonsService, parseLessonStartsAtToIso, parseTlToCents } from '../../services/api/instructorLessons';
+import { getSchoolById, listSchools, type SchoolRow } from '../../services/api/schools';
+import { instructorSchoolAssignmentsService, type AssignedSchoolItem } from '../../services/api/instructorSchoolAssignments';
+import { MainStackParamList } from '../../types/navigation';
 
 const formatEventDateTime = (d: Date): string => {
   const dateStr = d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -69,21 +77,63 @@ function getTimeOptions(): { date: Date; label: string }[] {
 }
 
 const TIME_OPTIONS = getTimeOptions();
-const DANCE_TYPES = ['Salsa', 'Bachata', 'Tango', 'Kizomba', 'Zumba', 'Latin', 'Cha-Cha', 'Rumba', 'Samba', 'Merengue', 'Diğer'];
 const LEVELS = ['Başlangıç', 'Orta', 'İleri'];
+const LESSON_FORMAT_OPTIONS = ['Özel ders', 'Grup dersi'] as const;
+const LESSON_DELIVERY_OPTIONS = ['Online', 'Yüz yüze'] as const;
+const LESSON_CURRENCIES = [
+  { code: 'TRY', label: 'TL' },
+  { code: 'USD', label: 'USD' },
+  { code: 'EUR', label: 'EUR' },
+] as const;
 
 function isSameDay(a: Date | null, b: Date | null): boolean {
   if (!a || !b) return false;
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+type Nav = NativeStackNavigationProp<MainStackParamList>;
+type EditClassRoute = RouteProp<MainStackParamList, 'EditClass'>;
+
 export const EditClassScreen: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<Nav>();
+  const route = useRoute<EditClassRoute>();
   const { colors, spacing, typography, radius, borders } = useTheme();
+  const { catalog, compactBySubId } = useDanceCatalog();
+  const preselectedSchoolId = route.params?.preselectedSchoolId ?? null;
+  const preselectedSchoolName = route.params?.preselectedSchoolName?.trim() || null;
   const [checkingAccess, setCheckingAccess] = useState(true);
   const [hasInstructorProfile, setHasInstructorProfile] = useState(false);
+  const [schools, setSchools] = useState<SchoolRow[]>([]);
+  const [schoolsLoading, setSchoolsLoading] = useState(true);
+  const [assignedSchools, setAssignedSchools] = useState<AssignedSchoolItem[]>([]);
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(preselectedSchoolId);
+  const [preselectedSchool, setPreselectedSchool] = useState<SchoolRow | null>(
+    preselectedSchoolId && preselectedSchoolName
+      ? {
+          id: preselectedSchoolId,
+          name: preselectedSchoolName,
+          category: null,
+          address: null,
+          city: null,
+          district: null,
+          latitude: null,
+          longitude: null,
+          rating: null,
+          review_count: null,
+          website: null,
+          telephone: null,
+          image_url: null,
+          current_status: null,
+          next_status: null,
+          snippet: null,
+        }
+      : null,
+  );
+  const [showSchoolPicker, setShowSchoolPicker] = useState(false);
+  const [schoolSearchQuery, setSchoolSearchQuery] = useState('');
   const [mediaUris, setMediaUris] = useState<string[]>([]);
   const [eventDateTime, setEventDateTime] = useState<Date | null>(null);
+  const [lessonEndsAt, setLessonEndsAt] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState<Date | null>(null);
   const [tempTime, setTempTime] = useState<Date | null>(null);
@@ -92,17 +142,87 @@ export const EditClassScreen: React.FC = () => {
   const [locationLoading, setLocationLoading] = useState(false);
   const [selectedDanceType, setSelectedDanceType] = useState<string | null>(null);
   const [showDancePicker, setShowDancePicker] = useState(false);
+  const [danceSearchQuery, setDanceSearchQuery] = useState('');
   const [selectedLevel, setSelectedLevel] = useState<string | null>(null);
   const [showLevelPicker, setShowLevelPicker] = useState(false);
+  const [lessonFormat, setLessonFormat] = useState<(typeof LESSON_FORMAT_OPTIONS)[number]>('Grup dersi');
+  const [lessonDelivery, setLessonDelivery] = useState<(typeof LESSON_DELIVERY_OPTIONS)[number]>('Yüz yüze');
+  const [currency, setCurrency] = useState<string>('TRY');
+  const [availableInstructors, setAvailableInstructors] = useState<ExploreInstructorListItem[]>([]);
+  const [showInstructorPicker, setShowInstructorPicker] = useState(false);
+  const [instructorSearchQuery, setInstructorSearchQuery] = useState('');
   const [className, setClassName] = useState('');
   const [instructor, setInstructor] = useState('');
   const [description, setDescription] = useState('');
   const [participantLimit, setParticipantLimit] = useState('');
   const [fee, setFee] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
   const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null);
   const timeListRef = useRef<ScrollView>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const selectedSchool = useMemo(
+    () => schools.find((school) => school.id === selectedSchoolId) ?? null,
+    [schools, selectedSchoolId],
+  );
+  const availableSchools = useMemo(() => {
+    if (!preselectedSchool) return schools;
+    if (schools.some((school) => school.id === preselectedSchool.id)) return schools;
+    return [preselectedSchool, ...schools];
+  }, [preselectedSchool, schools]);
+  const visibleSelectedSchool = useMemo(() => {
+    if (selectedSchool) return selectedSchool;
+    if (preselectedSchool && preselectedSchool.id === selectedSchoolId) return preselectedSchool;
+    return null;
+  }, [preselectedSchool, selectedSchool, selectedSchoolId]);
+  const filteredSchools = useMemo(() => {
+    const query = schoolSearchQuery.trim().toLocaleLowerCase('tr-TR');
+    if (!query) return availableSchools;
+    return availableSchools.filter((school) => {
+      const haystack = [school.name, school.city, school.district]
+        .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+        .join(' ')
+        .toLocaleLowerCase('tr-TR');
+      return haystack.includes(query);
+    });
+  }, [availableSchools, schoolSearchQuery]);
+  const danceSections = useMemo(
+    () =>
+      catalog.map((category) => ({
+        categoryId: category.id,
+        categoryName: category.name,
+        options:
+          category.subcategories.length > 0
+            ? category.subcategories.map((sub) => ({ id: sub.id, name: sub.name }))
+            : [{ id: category.id, name: category.name }],
+      })),
+    [catalog],
+  );
+  const selectedDanceTypeLabel = selectedDanceType ? compactBySubId.get(selectedDanceType) ?? '' : '';
+  const filteredDanceSections = useMemo(() => {
+    const query = danceSearchQuery.trim().toLocaleLowerCase('tr-TR');
+    if (!query) return danceSections;
+    return danceSections
+      .map((section) => {
+        const categoryMatch = section.categoryName.toLocaleLowerCase('tr-TR').includes(query);
+        const options = categoryMatch
+          ? section.options
+          : section.options.filter((option) => option.name.toLocaleLowerCase('tr-TR').includes(query));
+        return { ...section, options };
+      })
+      .filter((section) => section.options.length > 0);
+  }, [danceSearchQuery, danceSections]);
+  const filteredInstructors = useMemo(() => {
+    const query = instructorSearchQuery.trim().toLocaleLowerCase('tr-TR');
+    if (!query) return availableInstructors;
+    return availableInstructors.filter((item) => {
+      const haystack = [item.displayName, item.headline, item.username]
+        .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+        .join(' ')
+        .toLocaleLowerCase('tr-TR');
+      return haystack.includes(query);
+    });
+  }, [availableInstructors, instructorSearchQuery]);
 
   const loadInstructorAccess = useCallback(async () => {
     if (!hasSupabaseConfig()) {
@@ -128,7 +248,139 @@ export const EditClassScreen: React.FC = () => {
     }, [loadInstructorAccess]),
   );
 
-  const validateAndSave = () => {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await instructorProfileService.listVisibleForExplore();
+        if (!cancelled) {
+          setAvailableInstructors(rows);
+        }
+      } catch {
+        if (!cancelled) {
+          setAvailableInstructors([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setSchoolsLoading(true);
+      try {
+        const rows = await listSchools({ limit: 200 });
+        if (!cancelled) {
+          setSchools(rows);
+          setSelectedSchoolId((prev) => {
+            if (preselectedSchoolId && rows.some((row) => row.id === preselectedSchoolId)) return preselectedSchoolId;
+            return prev && rows.some((row) => row.id === prev) ? prev : null;
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setSchools([]);
+          setSelectedSchoolId(preselectedSchoolId);
+        }
+      } finally {
+        if (!cancelled) setSchoolsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [preselectedSchoolId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await instructorSchoolAssignmentsService.listMine();
+        if (!cancelled) setAssignedSchools(rows);
+      } catch {
+        if (!cancelled) setAssignedSchools([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!preselectedSchoolId) {
+      setPreselectedSchool(null);
+      return;
+    }
+    if (schools.some((school) => school.id === preselectedSchoolId)) {
+      setPreselectedSchool(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const row = await getSchoolById(preselectedSchoolId);
+        if (!cancelled) {
+          setPreselectedSchool(
+            row ??
+              (preselectedSchoolName
+                ? {
+                    id: preselectedSchoolId,
+                    name: preselectedSchoolName,
+                    category: null,
+                    address: null,
+                    city: null,
+                    district: null,
+                    latitude: null,
+                    longitude: null,
+                    rating: null,
+                    review_count: null,
+                    website: null,
+                    telephone: null,
+                    image_url: null,
+                    current_status: null,
+                    next_status: null,
+                    snippet: null,
+                  }
+                : null),
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setPreselectedSchool(
+            preselectedSchoolName
+              ? {
+                  id: preselectedSchoolId,
+                  name: preselectedSchoolName,
+                  category: null,
+                  address: null,
+                  city: null,
+                  district: null,
+                  latitude: null,
+                  longitude: null,
+                  rating: null,
+                  review_count: null,
+                  website: null,
+                  telephone: null,
+                  image_url: null,
+                  current_status: null,
+                  next_status: null,
+                  snippet: null,
+                }
+              : null,
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [preselectedSchoolId, preselectedSchoolName, schools]);
+
+  const validateAndSave = async () => {
     const next: Record<string, string> = {};
     if (!className.trim()) next.className = 'Ders adı zorunludur';
     if (!instructor.trim()) next.instructor = 'Eğitmen zorunludur';
@@ -144,7 +396,50 @@ export const EditClassScreen: React.FC = () => {
       setAlertModal({ title: 'Eksik Bilgi', message: 'Lütfen tüm zorunlu alanları doldurun.' });
       return;
     }
-    navigation.goBack();
+
+    const participantLimitValue =
+      lessonFormat === 'Özel ders' ? 1 : Number.parseInt(participantLimit.replace(/[^\d]/g, ''), 10);
+    const priceCents = parseTlToCents(fee);
+
+    if (eventDateTime && lessonEndsAt && lessonEndsAt.getTime() <= eventDateTime.getTime()) {
+      setAlertModal({ title: 'Eksik Bilgi', message: 'Bitiş tarihi başlangıçtan sonra olmalı.' });
+      return;
+    }
+
+    if (!Number.isFinite(participantLimitValue) || participantLimitValue <= 0 || !eventDateTime) {
+      setAlertModal({ title: 'Eksik Bilgi', message: 'Lütfen ders bilgilerini tekrar kontrol edin.' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await instructorLessonsService.create({
+        title: className,
+        description,
+        danceTypeIds: selectedDanceType ? [selectedDanceType] : [],
+        location: locationAddress,
+        address: locationAddress,
+        city: visibleSelectedSchool?.city ?? null,
+        priceCents,
+        participantLimit: participantLimitValue,
+        currency,
+        level: selectedLevel ?? 'Başlangıç',
+        lessonFormat: lessonFormat === 'Özel ders' ? 'private' : 'group',
+        lessonDelivery: lessonDelivery === 'Online' ? 'online' : 'in_person',
+        isPublished: true,
+        schoolId: selectedSchoolId,
+        startsAt: parseLessonStartsAtToIso(eventDateTime),
+        endsAt: parseLessonStartsAtToIso(lessonEndsAt),
+      });
+      setAlertModal({ title: 'Ders oluşturuldu', message: 'Ders kaydedildi.' });
+    } catch (error) {
+      setAlertModal({
+        title: 'Ders oluşturulamadı',
+        message: error instanceof Error ? error.message : 'Lütfen tekrar deneyin.',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   useEffect(() => {
@@ -210,6 +505,20 @@ export const EditClassScreen: React.FC = () => {
 
   const removeMedia = (index: number) => setMediaUris((prev) => prev.filter((_, i) => i !== index));
 
+  useEffect(() => {
+    if (lessonDelivery === 'Online' && locationAddress) {
+      setLocationAddress(null);
+      if (errors.location) {
+        setErrors((prev) => ({ ...prev, location: '' }));
+      }
+    }
+  }, [errors.location, lessonDelivery, locationAddress]);
+
+  const openSchoolPicker = () => {
+    setSchoolSearchQuery('');
+    setShowSchoolPicker(true);
+  };
+
   const pickLocation = async () => {
     setLocationLoading(true);
     try {
@@ -245,13 +554,17 @@ export const EditClassScreen: React.FC = () => {
         singleButton
         confirmLabel="Tamam"
         onCancel={() => setAlertModal(null)}
-        onConfirm={() => setAlertModal(null)}
+        onConfirm={() => {
+          const shouldGoBack = alertModal?.title === 'Ders oluşturuldu';
+          setAlertModal(null);
+          if (shouldGoBack) navigation.goBack();
+        }}
       />
       <Header
         title="Ders Oluştur"
         showBack
-        rightIcon={hasInstructorProfile && !checkingAccess ? 'check' : undefined}
-        onRightPress={hasInstructorProfile && !checkingAccess ? validateAndSave : undefined}
+        rightIcon={hasInstructorProfile && !checkingAccess && !saving ? 'check' : undefined}
+        onRightPress={hasInstructorProfile && !checkingAccess && !saving ? () => void validateAndSave() : undefined}
       />
       {checkingAccess ? (
         <View style={[styles.centeredState, { padding: spacing.xl }]}>
@@ -302,6 +615,67 @@ export const EditClassScreen: React.FC = () => {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
+          <View style={{ marginBottom: spacing.lg }}>
+            <View style={styles.labelRow}>
+              <View style={[styles.leftIconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100, marginRight: spacing.sm }]}>
+                <Icon name="school" size={18} color={colors.primary} />
+              </View>
+              <Text style={[typography.label, { color: '#9CA3AF' }]}>Bağlı Okul</Text>
+            </View>
+            <View style={{ height: spacing.xs }} />
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => !schoolsLoading && openSchoolPicker()}
+              disabled={schoolsLoading}
+              style={[styles.dateInputRow, { backgroundColor: 'transparent', borderRadius: radius.xl, borderWidth: borders.thin, borderColor: 'rgba(255,255,255,0.12)', paddingHorizontal: spacing.lg }]}
+            >
+              {schoolsLoading ? (
+                <>
+                  <ActivityIndicator color={colors.primary} size="small" />
+                  <Text style={[typography.body, { color: '#9CA3AF', marginLeft: spacing.sm, flex: 1 }]}>Okullar yükleniyor...</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={[typography.body, { color: visibleSelectedSchool ? '#FFFFFF' : '#6B7280', flex: 1 }]} numberOfLines={1}>
+                    {visibleSelectedSchool?.name || 'İstersen okul seç'}
+                  </Text>
+                  <Icon name="chevron-down" size={20} color="#FFFFFF" style={{ marginLeft: spacing.sm }} />
+                </>
+              )}
+            </TouchableOpacity>
+            <Text style={[typography.caption, { color: '#9CA3AF', marginTop: spacing.xs }]}>
+              {preselectedSchoolId ? 'Bu ekran atanmış olduğun okul seçili şekilde açıldı. İstersen başka okul da seçebilirsin.' : 'Bir okula bağlı dersler için bu alanı kullanabilirsin.'}
+            </Text>
+            {assignedSchools.length > 0 ? (
+              <View style={{ marginTop: spacing.md }}>
+                <Text style={[typography.captionBold, { color: colors.primary, marginBottom: spacing.xs }]}>Hızlı seçim</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+                  {assignedSchools.map((school) => {
+                    const selected = selectedSchoolId === school.schoolId;
+                    return (
+                      <TouchableOpacity
+                        key={school.schoolId}
+                        activeOpacity={0.8}
+                        onPress={() => setSelectedSchoolId(school.schoolId)}
+                        style={{
+                          paddingHorizontal: spacing.md,
+                          paddingVertical: spacing.sm,
+                          borderRadius: radius.xl,
+                          borderWidth: 1,
+                          borderColor: selected ? colors.primary : 'rgba(255,255,255,0.12)',
+                          backgroundColor: selected ? 'rgba(255,255,255,0.12)' : 'transparent',
+                        }}
+                      >
+                        <Text style={[typography.captionBold, { color: '#FFFFFF' }]} numberOfLines={1}>
+                          {school.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
+          </View>
           <Input
             label="Ders adı"
             placeholder=""
@@ -318,23 +692,30 @@ export const EditClassScreen: React.FC = () => {
             error={errors.className}
             required
           />
-          <Input
-            label="Eğitmen"
-            placeholder=""
-            value={instructor}
-            onChangeText={(t) => { setInstructor(t); if (errors.instructor) setErrors((e) => ({ ...e, instructor: '' })); }}
-            leftIcon="account"
-            leftIconColor={colors.primary}
-            leftIconWithLabel
-            labelColor="#9CA3AF"
-            backgroundColor="transparent"
-            borderColor="rgba(255,255,255,0.12)"
-            containerStyle={{ marginTop: spacing.lg }}
-            style={{ color: '#FFFFFF' }}
-            placeholderTextColor="#6B7280"
-            error={errors.instructor}
-            required
-          />
+          <View style={{ marginTop: spacing.lg }}>
+            <View style={styles.labelRow}>
+              <View style={[styles.leftIconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100, marginRight: spacing.sm }]}>
+                <Icon name="account" size={18} color={colors.primary} />
+              </View>
+              <Text style={[typography.label, { color: '#9CA3AF' }]}>Eğitmen</Text>
+              <Text style={[typography.label, { color: colors.error, marginLeft: 2 }]}>*</Text>
+            </View>
+            <View style={{ height: spacing.xs }} />
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                setInstructorSearchQuery('');
+                setShowInstructorPicker(true);
+              }}
+              style={[styles.dateInputRow, { backgroundColor: 'transparent', borderRadius: radius.xl, borderWidth: borders.thin, borderColor: errors.instructor ? colors.error : 'rgba(255,255,255,0.12)', paddingHorizontal: spacing.lg }]}
+            >
+              <Text style={[typography.body, { color: instructor ? '#FFFFFF' : '#6B7280', flex: 1 }]} numberOfLines={1}>
+                {instructor || 'Eğitmen seçin'}
+              </Text>
+              <Icon name="chevron-down" size={20} color="#FFFFFF" style={{ marginLeft: spacing.sm }} />
+            </TouchableOpacity>
+            {errors.instructor ? <Text style={[typography.caption, { color: colors.error, marginTop: spacing.xs }]}>{errors.instructor}</Text> : null}
+          </View>
           <Input
             label="Açıklama"
             placeholder=""
@@ -353,13 +734,44 @@ export const EditClassScreen: React.FC = () => {
             error={errors.description}
             required
           />
+          <View style={{ marginTop: spacing.lg }}>
+            <Text style={[typography.label, { color: '#9CA3AF', marginBottom: spacing.sm }]}>Ders formatı</Text>
+            <View style={styles.chipRow}>
+              {LESSON_FORMAT_OPTIONS.map((option) => (
+                <View key={option} style={{ marginRight: spacing.sm, marginBottom: spacing.sm }}>
+                  <Chip
+                    label={option}
+                    selected={lessonFormat === option}
+                    onPress={() => {
+                      setLessonFormat(option);
+                      if (option === 'Özel ders') {
+                        setParticipantLimit('1');
+                      } else if (participantLimit.trim() === '1') {
+                        setParticipantLimit('');
+                      }
+                    }}
+                  />
+                </View>
+              ))}
+            </View>
+          </View>
+          <View style={{ marginTop: spacing.md }}>
+            <Text style={[typography.label, { color: '#9CA3AF', marginBottom: spacing.sm }]}>Katılım şekli</Text>
+            <View style={styles.chipRow}>
+              {LESSON_DELIVERY_OPTIONS.map((option) => (
+                <View key={option} style={{ marginRight: spacing.sm, marginBottom: spacing.sm }}>
+                  <Chip label={option} selected={lessonDelivery === option} onPress={() => setLessonDelivery(option)} />
+                </View>
+              ))}
+            </View>
+          </View>
 
           <View style={{ marginTop: spacing.lg }}>
             <View style={styles.labelRow}>
               <View style={[styles.leftIconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100, marginRight: spacing.sm }]}>
                 <Icon name="calendar" size={18} color={colors.primary} />
               </View>
-              <Text style={[typography.label, { color: '#9CA3AF' }]}>Tarih ve Saat</Text>
+              <Text style={[typography.label, { color: '#9CA3AF' }]}>Başlangıç Tarihi ve Saati</Text>
             <Text style={[typography.label, { color: colors.error, marginLeft: 2 }]}>*</Text>
             </View>
             <View style={{ height: spacing.xs }} />
@@ -375,6 +787,14 @@ export const EditClassScreen: React.FC = () => {
             </TouchableOpacity>
             {errors.dateTime ? <Text style={[typography.caption, { color: colors.error, marginTop: spacing.xs }]}>{errors.dateTime}</Text> : null}
           </View>
+
+          <LessonDateTimeField
+            label="Bitiş tarihi ve saati"
+            helperText="İsteğe bağlı. Dersin biteceği zamanı girin."
+            emptyText="Bitiş seçmek için dokunun"
+            value={lessonEndsAt}
+            onChange={setLessonEndsAt}
+          />
 
           {showDatePicker && (
             <Modal transparent animationType="slide">
@@ -452,6 +872,155 @@ export const EditClassScreen: React.FC = () => {
             </Modal>
           )}
 
+          {showSchoolPicker && (
+            <Modal transparent animationType="slide">
+              <View style={styles.modalContainer}>
+                <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setShowSchoolPicker(false)} />
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                  keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+                  style={styles.schoolPickerKeyboardWrap}
+                  pointerEvents="box-none"
+                >
+                  <View style={[styles.pickerSheet, styles.schoolPickerSheet, { backgroundColor: '#2d1b2e' }]}>
+                    <View style={[styles.pickerHeader, { borderBottomColor: 'rgba(255,255,255,0.12)' }]}>
+                      <TouchableOpacity onPress={() => setShowSchoolPicker(false)} hitSlop={12}>
+                        <Text style={[typography.body, { color: '#9CA3AF' }]}>İptal</Text>
+                      </TouchableOpacity>
+                      <Text style={[typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>Okul seçin</Text>
+                      <View style={{ width: 40 }} />
+                    </View>
+                    <View style={styles.schoolSearchWrap}>
+                      <Icon name="magnify" size={18} color="#9CA3AF" />
+                      <TextInput
+                        value={schoolSearchQuery}
+                        onChangeText={setSchoolSearchQuery}
+                        placeholder="Okul ara"
+                        placeholderTextColor="#6B7280"
+                        style={[typography.body, styles.schoolSearchInput]}
+                        autoCorrect={false}
+                        autoCapitalize="none"
+                        returnKeyType="search"
+                      />
+                    </View>
+                    <ScrollView
+                      style={styles.schoolPickerList}
+                      contentContainerStyle={{ paddingVertical: 8 }}
+                      showsVerticalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      <TouchableOpacity
+                        style={[styles.pickerRow, { backgroundColor: selectedSchoolId === null ? 'rgba(255,255,255,0.12)' : 'transparent' }]}
+                        onPress={() => {
+                          setSelectedSchoolId(null);
+                          setShowSchoolPicker(false);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]}>Bağımsız ders</Text>
+                        {selectedSchoolId === null && <Icon name="check" size={20} color={colors.primary} />}
+                      </TouchableOpacity>
+                      {filteredSchools.map((school) => (
+                        <TouchableOpacity
+                          key={school.id}
+                          style={[styles.pickerRow, { backgroundColor: selectedSchoolId === school.id ? 'rgba(255,255,255,0.12)' : 'transparent' }]}
+                          onPress={() => {
+                            setSelectedSchoolId(school.id);
+                            setShowSchoolPicker(false);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <View style={{ flex: 1, paddingRight: spacing.md }}>
+                            <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]} numberOfLines={1}>{school.name}</Text>
+                            {!!school.city && (
+                              <Text style={[typography.caption, { color: '#9CA3AF', marginTop: 4 }]} numberOfLines={1}>
+                                {school.city}
+                                {school.district ? `, ${school.district}` : ''}
+                              </Text>
+                            )}
+                          </View>
+                          {selectedSchoolId === school.id && <Icon name="check" size={20} color={colors.primary} />}
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </KeyboardAvoidingView>
+              </View>
+            </Modal>
+          )}
+
+          {showInstructorPicker && (
+            <Modal transparent animationType="slide">
+              <View style={styles.modalContainer}>
+                <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setShowInstructorPicker(false)} />
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                  keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+                  style={styles.schoolPickerKeyboardWrap}
+                  pointerEvents="box-none"
+                >
+                <View style={[styles.pickerSheet, styles.instructorPickerSheet, { backgroundColor: '#2d1b2e' }]}>
+                  <View style={[styles.pickerHeader, { borderBottomColor: 'rgba(255,255,255,0.12)' }]}>
+                    <TouchableOpacity onPress={() => setShowInstructorPicker(false)} hitSlop={12}>
+                      <Text style={[typography.body, { color: '#9CA3AF' }]}>İptal</Text>
+                    </TouchableOpacity>
+                    <Text style={[typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>Eğitmen seçin</Text>
+                    <View style={{ width: 40 }} />
+                  </View>
+                  <View style={styles.schoolSearchWrap}>
+                    <Icon name="magnify" size={18} color="#9CA3AF" />
+                    <TextInput
+                      value={instructorSearchQuery}
+                      onChangeText={setInstructorSearchQuery}
+                      placeholder="Eğitmen ara"
+                      placeholderTextColor="#6B7280"
+                      style={[typography.body, styles.schoolSearchInput]}
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                      returnKeyType="search"
+                    />
+                  </View>
+                  <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ paddingVertical: 8 }} showsVerticalScrollIndicator={false}>
+                    {filteredInstructors.map((item) => {
+                      const label = item.displayName || item.headline || 'Eğitmen';
+                      const selected = instructor === label;
+                      return (
+                        <TouchableOpacity
+                          key={item.userId}
+                          style={[styles.pickerRow, { backgroundColor: selected ? 'rgba(255,255,255,0.12)' : 'transparent' }]}
+                          onPress={() => {
+                            setInstructor(label);
+                            setErrors((e) => ({ ...e, instructor: '' }));
+                            setShowInstructorPicker(false);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Image
+                            source={item.avatarUrl ? { uri: item.avatarUrl } : undefined}
+                            style={styles.instructorAvatar}
+                          />
+                          <View style={{ flex: 1, paddingRight: spacing.md }}>
+                            <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]} numberOfLines={1}>
+                              {label}
+                            </Text>
+                            {!!item.username && (
+                              <Text style={[typography.caption, { color: '#9CA3AF', marginTop: 4 }]} numberOfLines={1}>
+                                @{item.username}
+                              </Text>
+                            )}
+                          </View>
+                          {selected ? <Icon name="check" size={20} color={colors.primary} /> : null}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+                </KeyboardAvoidingView>
+              </View>
+            </Modal>
+          )}
+
+          {lessonDelivery === 'Yüz yüze' ? (
           <View style={{ marginTop: spacing.lg }}>
             <View style={[styles.labelRow, { marginBottom: spacing.xs }]}>
               <View style={[styles.leftIconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100, marginRight: spacing.sm }]}>
@@ -461,19 +1030,45 @@ export const EditClassScreen: React.FC = () => {
             <Text style={[typography.label, { color: colors.error, marginLeft: 2 }]}>*</Text>
             </View>
             <View style={{ height: spacing.xs }} />
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={pickLocation}
-              disabled={locationLoading}
-              style={[styles.dateInputRow, { backgroundColor: 'transparent', borderRadius: radius.xl, borderWidth: borders.thin, borderColor: errors.location ? colors.error : 'rgba(255,255,255,0.12)', paddingHorizontal: spacing.lg }]}
-            >
-              <Text style={[typography.body, { color: locationAddress ? '#FFFFFF' : '#6B7280', flex: 1 }]} numberOfLines={2}>
-                {locationLoading ? 'Konum alınıyor...' : locationAddress || 'Konum seçin'}
-              </Text>
-              <Icon name={locationAddress ? 'pencil' : 'map-marker'} size={20} color="#FFFFFF" style={{ marginLeft: spacing.sm }} />
-            </TouchableOpacity>
+            <Input
+              placeholder="Okul adı, mekan adı veya açık adres yazın"
+              value={locationAddress ?? ''}
+              onChangeText={(text) => {
+                const trimmed = text.trim();
+                setLocationAddress(trimmed.length > 0 ? text : null);
+                if (errors.location) setErrors((e) => ({ ...e, location: '' }));
+              }}
+              leftIcon="map-marker"
+              leftIconColor={colors.primary}
+              backgroundColor="transparent"
+              borderColor={errors.location ? colors.error : 'rgba(255,255,255,0.12)'}
+              style={{ color: '#FFFFFF' }}
+              placeholderTextColor="#6B7280"
+              containerStyle={{ marginTop: 0 }}
+            />
+            <View style={[styles.locationActionsRow, { marginTop: spacing.sm }]}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => void pickLocation()}
+                disabled={locationLoading}
+                style={[
+                  styles.locationActionButton,
+                  { borderColor: 'rgba(255,255,255,0.2)', opacity: locationLoading ? 0.6 : 1 },
+                ]}
+              >
+                {locationLoading ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Icon name="crosshairs-gps" size={16} color={colors.primary} />
+                )}
+                <Text style={[typography.captionBold, styles.locationActionLabel]}>
+                  {locationLoading ? 'Alınıyor...' : 'Konumumdan doldur'}
+                </Text>
+              </TouchableOpacity>
+            </View>
             {errors.location ? <Text style={[typography.caption, { color: colors.error, marginTop: spacing.xs }]}>{errors.location}</Text> : null}
           </View>
+          ) : null}
 
           <View style={{ marginTop: spacing.lg }}>
             <View style={[styles.labelRow, { marginBottom: spacing.xs }]}>
@@ -489,8 +1084,8 @@ export const EditClassScreen: React.FC = () => {
               onPress={() => setShowDancePicker(true)}
               style={[styles.dateInputRow, { backgroundColor: 'transparent', borderRadius: radius.xl, borderWidth: borders.thin, borderColor: errors.danceType ? colors.error : 'rgba(255,255,255,0.12)', paddingHorizontal: spacing.lg }]}
             >
-              <Text style={[typography.body, { color: selectedDanceType ? '#FFFFFF' : '#6B7280', flex: 1 }]} numberOfLines={1}>
-                {selectedDanceType || 'Dans türü seçin'}
+              <Text style={[typography.body, { color: selectedDanceTypeLabel ? '#FFFFFF' : '#6B7280', flex: 1 }]} numberOfLines={1}>
+                {selectedDanceTypeLabel || 'Dans türü seçin'}
               </Text>
               <Icon name="chevron-down" size={20} color="#FFFFFF" style={{ marginLeft: spacing.sm }} />
             </TouchableOpacity>
@@ -509,17 +1104,37 @@ export const EditClassScreen: React.FC = () => {
                     <Text style={[typography.body, { color: '#FFFFFF', fontWeight: '600' }]}>Dans türü seçin</Text>
                     <View style={{ width: 40 }} />
                   </View>
+                  <View style={styles.schoolSearchWrap}>
+                    <Icon name="magnify" size={18} color="#9CA3AF" />
+                    <TextInput
+                      value={danceSearchQuery}
+                      onChangeText={setDanceSearchQuery}
+                      placeholder="Dans türü ara"
+                      placeholderTextColor="#6B7280"
+                      style={[typography.body, styles.schoolSearchInput]}
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                      returnKeyType="search"
+                    />
+                  </View>
                   <ScrollView style={{ maxHeight: 280 }} contentContainerStyle={{ paddingVertical: 8 }} showsVerticalScrollIndicator={false}>
-                    {DANCE_TYPES.map((name) => (
-                      <TouchableOpacity
-                        key={name}
-                        style={[styles.pickerRow, { backgroundColor: selectedDanceType === name ? 'rgba(255,255,255,0.12)' : 'transparent' }]}
-                        onPress={() => { setSelectedDanceType(name); setErrors((e) => ({ ...e, danceType: '' })); setShowDancePicker(false); }}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]}>{name}</Text>
-                        {selectedDanceType === name && <Icon name="check" size={20} color={colors.primary} />}
-                      </TouchableOpacity>
+                    {filteredDanceSections.map((section) => (
+                      <View key={section.categoryId}>
+                        <Text style={[typography.captionBold, { color: colors.primary, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 }]}>
+                          {section.categoryName}
+                        </Text>
+                        {section.options.map((option) => (
+                          <TouchableOpacity
+                            key={option.id}
+                            style={[styles.pickerRow, { backgroundColor: selectedDanceType === option.id ? 'rgba(255,255,255,0.12)' : 'transparent' }]}
+                            onPress={() => { setSelectedDanceType(option.id); setErrors((e) => ({ ...e, danceType: '' })); setDanceSearchQuery(''); setShowDancePicker(false); }}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[typography.body, { color: '#FFFFFF', fontSize: 16 }]}>{option.name}</Text>
+                            {selectedDanceType === option.id && <Icon name="check" size={20} color={colors.primary} />}
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     ))}
                   </ScrollView>
                 </View>
@@ -622,25 +1237,36 @@ export const EditClassScreen: React.FC = () => {
             error={errors.participantLimit}
             required
           />
-          <Input
-            label="Ücret"
-            placeholder=""
-            value={fee}
-            onChangeText={(t) => { setFee(t); if (errors.fee) setErrors((e) => ({ ...e, fee: '' })); }}
-            leftIcon="tag-outline"
-            leftIconColor={colors.primary}
-            leftIconWithLabel
-            labelColor="#9CA3AF"
-            backgroundColor="transparent"
-            borderColor="rgba(255,255,255,0.12)"
-            containerStyle={{ marginTop: spacing.lg }}
-            style={{ color: '#FFFFFF' }}
-            placeholderTextColor="#6B7280"
-            onFocus={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-            error={errors.fee}
-            required
-          />
-          <Button title="Kaydet" onPress={validateAndSave} fullWidth size="lg" style={{ marginTop: spacing.xxl }} />
+          <View style={{ marginTop: spacing.lg }}>
+            <Input
+              label={`Ücret (${currency})`}
+              placeholder=""
+              value={fee}
+              onChangeText={(t) => { setFee(t); if (errors.fee) setErrors((e) => ({ ...e, fee: '' })); }}
+              leftIcon="tag-outline"
+              leftIconColor={colors.primary}
+              leftIconWithLabel
+              labelColor="#9CA3AF"
+              backgroundColor="transparent"
+              borderColor="rgba(255,255,255,0.12)"
+              containerStyle={{ marginTop: 0 }}
+              style={{ color: '#FFFFFF' }}
+              placeholderTextColor="#6B7280"
+              onFocus={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+              error={errors.fee}
+              required
+            />
+            <View style={{ marginTop: spacing.sm }}>
+              <View style={styles.chipRow}>
+                {LESSON_CURRENCIES.map((option) => (
+                  <View key={option.code} style={{ marginRight: spacing.sm, marginBottom: spacing.sm }}>
+                    <Chip label={option.label} selected={currency === option.code} onPress={() => setCurrency(option.code)} />
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+          <Button title="Kaydet" onPress={() => void validateAndSave()} loading={saving} fullWidth size="lg" style={{ marginTop: spacing.xxl }} />
           </ScrollView>
         </KeyboardAvoidingView>
       )}
@@ -670,6 +1296,7 @@ const styles = StyleSheet.create({
   pickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
   pickerScrollContent: { paddingBottom: 24, paddingVertical: 8 },
   pickerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 16, minHeight: 52 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap' },
   mediaInputBox: { borderWidth: 1 },
   mediaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12 },
   centeredState: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -677,4 +1304,59 @@ const styles = StyleSheet.create({
   mediaThumb: { width: 88, height: 88 },
   mediaRemoveBtn: { position: 'absolute', top: 4, right: 4, width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
   mediaAddBtn: { width: 88, height: 88, borderWidth: 2, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
+  schoolSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+    marginHorizontal: 8,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  schoolPickerKeyboardWrap: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  schoolPickerSheet: {
+    height: '78%',
+  },
+  instructorPickerSheet: {
+    height: '60%',
+  },
+  schoolPickerList: {
+    flex: 1,
+  },
+  schoolSearchInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    paddingVertical: 10,
+  },
+  locationActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  locationActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  locationActionLabel: {
+    color: '#FFFFFF',
+    marginLeft: 6,
+  },
+  instructorAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
 });

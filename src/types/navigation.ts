@@ -8,7 +8,7 @@ export type AuthStackParamList = {
   ForgotPasswordSent: { email: string };
   Preferences: undefined;
   SignUp: undefined;
-  Onboarding: { startFromStep?: number } | undefined;
+  Onboarding: undefined;
 };
 
 export type MainTabsParamList = {
@@ -16,6 +16,7 @@ export type MainTabsParamList = {
   Schools: { isMapView?: boolean } | undefined;
   DanceCircle: undefined;
   Favorites: undefined;
+  Lessons: undefined;
   Profile: undefined;
 };
 
@@ -23,6 +24,7 @@ export type MainStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabsParamList>;
   EventDetails: { id: string; fromFavorites?: boolean };
   SchoolDetails: { id: string };
+  SchoolAdminPanel: { schoolId: string };
   FavoriteSchools: undefined;
   FavoritesHub: undefined;
   ClassDetails: { id: string };
@@ -31,8 +33,8 @@ export type MainStackParamList = {
     eventTitle?: string;
     attendees?: { id: string; name: string; avatar: string }[];
   } | undefined;
-  EditEvent: { eventId?: string } | undefined;
-  EditClass: { draftData?: any };
+  EditEvent: { eventId?: string; preselectedSchoolId?: string; preselectedSchoolName?: string } | undefined;
+  EditClass: { draftData?: any; preselectedSchoolId?: string; preselectedSchoolName?: string } | undefined;
   ChatList: undefined;
   ChatDetail: {
     id: string;
@@ -68,6 +70,7 @@ export type MainStackParamList = {
   UserPanel: undefined;
   InstructorsList: undefined;
   InstructorOnboarding: undefined;
+  Lessons: undefined;
 };
 
 export type DrawerParamList = {

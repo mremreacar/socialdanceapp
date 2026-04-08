@@ -46,7 +46,7 @@ export const FavoriteSchoolsScreen: React.FC<Props> = ({ navigation }) => {
     const list = rows ?? [];
     return list.map((r) => {
       const location = [r.district, r.city].filter(Boolean).join(', ') || r.address || '';
-      const image = r.image_url || `https://picsum.photos/seed/${encodeURIComponent(r.name)}/700/500`;
+      const image = r.image_url?.trim() || '';
       return {
         id: r.id,
         name: r.name,

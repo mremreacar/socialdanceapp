@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '../../theme';
@@ -23,6 +23,14 @@ export const SchoolCard: React.FC<SchoolCardProps> = ({ school, onPress, variant
   const textTertiaryColor = isDark ? 'rgba(255,255,255,0.6)' : colors.textTertiary;
   const accentColor = isDark ? '#EE2AEE' : colors.primary;
   const hasImage = Boolean(school.image && school.image.trim().length > 0);
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
+  const schoolImageSource = hasImage && !imageLoadFailed
+    ? { uri: school.image.trim() }
+    : require('../../../assets/social_dance.png');
+
+  useEffect(() => {
+    setImageLoadFailed(false);
+  }, [school.image]);
 
   if (variant === 'list') {
     return (
@@ -41,19 +49,14 @@ export const SchoolCard: React.FC<SchoolCardProps> = ({ school, onPress, variant
           },
         ]}
       >
-        {hasImage ? (
-          <Image
-            source={{ uri: school.image }}
-            style={[styles.listImage, { borderRadius: radius.lg }]}
-            contentFit="cover"
-            placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
-            transition={200}
-          />
-        ) : (
-          <View style={[styles.listImagePlaceholder, { borderRadius: radius.lg, backgroundColor: isDark ? 'rgba(238,43,238,0.12)' : colors.primaryAlpha10 }]}>
-            <Icon name="school-outline" size={34} color={accentColor} />
-          </View>
-        )}
+        <Image
+          source={schoolImageSource}
+          style={[styles.listImage, { borderRadius: radius.lg }]}
+          contentFit={hasImage && !imageLoadFailed ? 'cover' : 'contain'}
+          placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+          transition={200}
+          onError={() => setImageLoadFailed(true)}
+        />
         <View style={[styles.listContent, { marginLeft: spacing.lg }]}>
           <Text style={[typography.bodyBold, { color: textColor }]} numberOfLines={1}>{school.name}</Text>
           <View style={[styles.row, { marginTop: spacing.xs }]}>
@@ -96,28 +99,14 @@ export const SchoolCard: React.FC<SchoolCardProps> = ({ school, onPress, variant
     >
       <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={styles.touchableArea}>
         <View style={styles.imageWrapper}>
-          {hasImage ? (
-            <Image
-              source={{ uri: school.image }}
-              style={[styles.image, { borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl }]}
-              contentFit="cover"
-              placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
-              transition={200}
-            />
-          ) : (
-            <View
-              style={[
-                styles.imagePlaceholder,
-                {
-                  borderTopLeftRadius: radius.xl,
-                  borderTopRightRadius: radius.xl,
-                  backgroundColor: isDark ? 'rgba(238,43,238,0.12)' : colors.primaryAlpha10,
-                },
-              ]}
-            >
-              <Icon name="school-outline" size={34} color={isDark ? '#EE2AEE' : colors.primary} />
-            </View>
-          )}
+          <Image
+            source={schoolImageSource}
+            style={[styles.image, { borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl }]}
+            contentFit={hasImage && !imageLoadFailed ? 'cover' : 'contain'}
+            placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+            transition={200}
+            onError={() => setImageLoadFailed(true)}
+          />
         </View>
         <View style={{ padding: spacing.md }}>
           <View style={[styles.rowBetween, { marginBottom: 0 }]}>
@@ -164,7 +153,7 @@ export const SchoolCard: React.FC<SchoolCardProps> = ({ school, onPress, variant
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={() => { if (school.phone) Linking.openURL(`tel:${school.phone}`); }}
-        style={[styles.phoneIconBtn, { borderColor: '#3D2A3D', borderRadius: 100, position: 'absolute', right: spacing.md, top: 140 + spacing.md }]}
+        style={[styles.phoneIconBtn, { borderColor: '#3D2A3D', borderRadius: 100, position: 'absolute', right: spacing.md, top: 160 + spacing.md }]}
       >
         <Icon name="phone-outline" size={20} color="#F02AF0" />
       </TouchableOpacity>
@@ -181,12 +170,6 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
   },
-  listImagePlaceholder: {
-    width: 96,
-    height: 96,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   listContent: {
     flex: 1,
     justifyContent: 'space-between',
@@ -201,18 +184,12 @@ const styles = StyleSheet.create({
   },
   imageWrapper: {
     width: '100%',
-    height: 140,
-    backgroundColor: '#e5e7eb',
+    height: 160,
+    backgroundColor: '#2A1630',
   },
   image: {
     width: '100%',
-    height: 140,
-  },
-  imagePlaceholder: {
-    width: '100%',
-    height: 140,
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: 160,
   },
   row: {
     flexDirection: 'row',

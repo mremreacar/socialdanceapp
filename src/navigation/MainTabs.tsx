@@ -8,6 +8,7 @@ import { ExploreScreen } from '../screens/explore/ExploreScreen';
 import { SchoolsScreen } from '../screens/schools/SchoolsScreen';
 import { DanceCircleScreen } from '../screens/dance/DanceCircleScreen';
 import { MyEventsScreen } from '../screens/social/FavoritesScreen';
+import { LessonsScreen } from '../screens/social/LessonsScreen';
 import { ProfileScreen } from '../screens/social/ProfileScreen';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -20,6 +21,7 @@ const tabIcons: Record<keyof MainTabsParamList, { active: IconName; inactive: Ic
   Schools: { active: 'school', inactive: 'school-outline' },
   DanceCircle: { active: 'human-female-dance', inactive: 'human-female-dance' },
   Favorites: { active: 'heart', inactive: 'heart-outline' },
+  Lessons: { active: 'school', inactive: 'school-outline' },
   Profile: { active: 'account', inactive: 'account-outline' },
 };
 
@@ -28,6 +30,7 @@ const tabLabels: Record<keyof MainTabsParamList, string> = {
   Schools: 'Okullar',
   DanceCircle: 'DanceCircle',
   Favorites: 'Etkinlikler',
+  Lessons: 'Dersler',
   Profile: 'Profil',
 };
 
@@ -88,6 +91,14 @@ export const MainTabs: React.FC = () => {
       <Tab.Screen name="Schools" component={SchoolsScreen} />
       <Tab.Screen name="DanceCircle" component={DanceCircleScreen} />
       <Tab.Screen name="Favorites" component={MyEventsScreen} />
+      <Tab.Screen
+        name="Lessons"
+        component={LessonsScreen}
+        options={{
+          tabBarButton: () => null,
+          tabBarItemStyle: { display: 'none' },
+        }}
+      />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );

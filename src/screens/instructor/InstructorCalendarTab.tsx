@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Icon } from '../../components/ui/Icon';
+import { MainStackParamList } from '../../types/navigation';
 import {
   formatLessonStartsAt,
   instructorLessonsService,
@@ -30,11 +32,14 @@ type LessonWithSlots = {
 
 type CalendarEventItem = {
   id: string;
+  lessonId: string;
   kind: 'ders_baslangic' | 'haftalik';
   lessonTitle: string;
   detail: string;
   sortMinutes: number;
 };
+
+type Nav = NativeStackNavigationProp<MainStackParamList>;
 
 function sameLocalCalendarDay(d: Date, y: number, m: number, day: number): boolean {
   return d.getFullYear() === y && d.getMonth() === m && d.getDate() === day;
@@ -68,6 +73,7 @@ function eventsForLocalDay(
         const label = formatLessonStartsAt(lesson.startsAt) ?? '';
         out.push({
           id: `start-${lesson.id}-${y}-${m}-${day}`,
+          lessonId: lesson.id,
           kind: 'ders_baslangic',
           lessonTitle: lesson.title,
           detail: label ? `Ders tarihi: ${label}` : 'Ders tarihi',
@@ -83,6 +89,7 @@ function eventsForLocalDay(
       const addr = s.address ? ` · ${s.address}` : '';
       out.push({
         id: `slot-${s.id}-${y}-${m}-${day}`,
+        lessonId: lesson.id,
         kind: 'haftalik',
         lessonTitle: lesson.title,
         detail: `${s.startTime} · ${loc}${addr}`,
@@ -115,6 +122,7 @@ function chunkWeeks(cells: (number | null)[]): (number | null)[][] {
 }
 
 export const InstructorCalendarTab: React.FC = () => {
+  const navigation = useNavigation<Nav>();
   const { colors, spacing, typography, radius } = useTheme();
   const now = new Date();
   const [monthAnchor, setMonthAnchor] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
@@ -272,7 +280,7 @@ export const InstructorCalendarTab: React.FC = () => {
                       borderRadius: radius.md,
                       borderWidth: isToday ? 2 : 1,
                       borderColor: isSelected ? colors.primary : isToday ? colors.primary + '88' : colors.cardBorder,
-                      backgroundColor: isSelected ? `${colors.primary}22` : '#311831',
+                      backgroundColor: isSelected ? colors.primary : '#311831',
                     },
                   ]}
                   onPress={() => setSelectedDay(dayNum)}
@@ -281,7 +289,7 @@ export const InstructorCalendarTab: React.FC = () => {
                   <Text
                     style={[
                       typography.bodySmallBold,
-                      { color: isSelected ? colors.primary : '#FFFFFF', textAlign: 'center' },
+                      { color: '#FFFFFF', textAlign: 'center' },
                     ]}
                   >
                     {dayNum}
@@ -322,8 +330,10 @@ export const InstructorCalendarTab: React.FC = () => {
           <Text style={[typography.caption, { color: colors.textTertiary }]}>Bu günde kayıtlı ders veya program yok.</Text>
         ) : (
           selectedEvents.map((ev) => (
-            <View
+            <TouchableOpacity
               key={ev.id}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('ClassDetails', { id: ev.lessonId })}
               style={{
                 marginTop: spacing.sm,
                 padding: spacing.md,
@@ -348,8 +358,8 @@ export const InstructorCalendarTab: React.FC = () => {
                 </Text>
               </View>
               <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{ev.lessonTitle}</Text>
-              <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 4 }]}>{ev.detail}</Text>
-            </View>
+                <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 4 }]}>{ev.detail}</Text>
+            </TouchableOpacity>
           ))
         )}
 

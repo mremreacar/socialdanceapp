@@ -9,6 +9,7 @@ export type SchoolRow = {
   district: string | null;
   latitude: number | null;
   longitude: number | null;
+  google_maps_url: string | null;
   rating: number | null;
   review_count: number | null;
   website: string | null;
@@ -25,7 +26,7 @@ export async function listSchools(params?: { q?: string; limit?: number; offset?
   const offset = Math.max(params?.offset ?? 0, 0);
 
   const select =
-    'id,name,category,address,city,district,latitude,longitude,rating,review_count,website,telephone,image_url,current_status,next_status,snippet';
+    'id,name,category,address,city,district,latitude,longitude,google_maps_url,rating,review_count,website,telephone,image_url,current_status,next_status,snippet';
 
   // Basic filter: REST doesn't have full-text without RPC. We'll do ilike on name & address/city/district.
   const filters = q
@@ -40,11 +41,10 @@ export async function listSchools(params?: { q?: string; limit?: number; offset?
 
 export async function getSchoolById(id: string): Promise<SchoolRow | null> {
   const select =
-    'id,name,category,address,city,district,latitude,longitude,rating,review_count,website,telephone,image_url,current_status,next_status,snippet';
+    'id,name,category,address,city,district,latitude,longitude,google_maps_url,rating,review_count,website,telephone,image_url,current_status,next_status,snippet';
   const rows = await supabaseRestRequest<SchoolRow[]>(
     `/schools?select=${select}&id=eq.${encodeURIComponent(id)}&limit=1`,
     { method: 'GET' },
   );
   return rows[0] ?? null;
 }
-

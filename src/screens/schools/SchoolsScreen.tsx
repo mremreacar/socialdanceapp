@@ -1,7 +1,7 @@
 import React, { startTransition, useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions, Text, FlatList, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import MapView, { Marker } from 'react-native-maps';
 import { useTheme } from '../../theme';
@@ -29,6 +29,81 @@ const ISTANBUL_REGION = {
 
 const HEADER_HEIGHT = 60;
 const HEADER_EXTRA_HEIGHT = 90;
+const TURKEY_LAT_RANGE = { min: 35, max: 43.5 };
+const TURKEY_LNG_RANGE = { min: 25, max: 45.5 };
+
+const parseCoordinate = (value: unknown): number | null => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const normalized = value.trim().replace(',', '.');
+    if (!normalized) return null;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const isWithinRange = (value: number, min: number, max: number): boolean => value >= min && value <= max;
+
+const normalizeSchoolCoordinates = (
+  latitude: unknown,
+  longitude: unknown,
+): { latitude: number | undefined; longitude: number | undefined } => {
+  const lat = parseCoordinate(latitude);
+  const lng = parseCoordinate(longitude);
+
+  if (lat == null || lng == null) {
+    return {
+      latitude: lat ?? undefined,
+      longitude: lng ?? undefined,
+    };
+  }
+
+  const latLooksLikeTurkeyLat = isWithinRange(lat, TURKEY_LAT_RANGE.min, TURKEY_LAT_RANGE.max);
+  const lngLooksLikeTurkeyLng = isWithinRange(lng, TURKEY_LNG_RANGE.min, TURKEY_LNG_RANGE.max);
+
+  if (latLooksLikeTurkeyLat && lngLooksLikeTurkeyLng) {
+    return { latitude: lat, longitude: lng };
+  }
+
+  const latLooksLikeTurkeyLng = isWithinRange(lat, TURKEY_LNG_RANGE.min, TURKEY_LNG_RANGE.max);
+  const lngLooksLikeTurkeyLat = isWithinRange(lng, TURKEY_LAT_RANGE.min, TURKEY_LAT_RANGE.max);
+
+  if (latLooksLikeTurkeyLng && lngLooksLikeTurkeyLat) {
+    return { latitude: lng, longitude: lat };
+  }
+
+  return { latitude: lat, longitude: lng };
+};
+
+const extractCoordinatesFromGoogleMapsUrl = (
+  rawUrl: unknown,
+): { latitude: number | undefined; longitude: number | undefined } => {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+    return { latitude: undefined, longitude: undefined };
+  }
+
+  const url = rawUrl.trim();
+  const patterns = [
+    /@(-?\d+(?:[.,]\d+)?),\s*(-?\d+(?:[.,]\d+)?)/,
+    /[?&]q=(-?\d+(?:[.,]\d+)?),\s*(-?\d+(?:[.,]\d+)?)/,
+    /[?&]query=(-?\d+(?:[.,]\d+)?),\s*(-?\d+(?:[.,]\d+)?)/,
+    /[?&]ll=(-?\d+(?:[.,]\d+)?),\s*(-?\d+(?:[.,]\d+)?)/,
+    /!3d(-?\d+(?:[.,]\d+)?)!4d(-?\d+(?:[.,]\d+)?)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (!match) continue;
+    const [, rawLat, rawLng] = match;
+    const normalized = normalizeSchoolCoordinates(rawLat, rawLng);
+    if (normalized.latitude != null && normalized.longitude != null) {
+      return normalized;
+    }
+  }
+
+  return { latitude: undefined, longitude: undefined };
+};
 
 export const SchoolsScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
@@ -73,9 +148,7 @@ export const SchoolsScreen: React.FC = () => {
         [r.district, r.city].filter(Boolean).join(', ') ||
         r.address ||
         '—';
-      const image =
-        r.image_url ||
-        `https://picsum.photos/seed/${encodeURIComponent(r.name)}/400/280`;
+      const image = r.image_url?.trim() || '';
       const rating = typeof r.rating === 'number' && Number.isFinite(r.rating) ? r.rating : 0;
       const ratingCount = typeof r.review_count === 'number' && Number.isFinite(r.review_count) ? r.review_count : 0;
       const isOpen =
@@ -83,13 +156,15 @@ export const SchoolsScreen: React.FC = () => {
         (r.current_status || '').toLowerCase().includes('open') ||
         (r.current_status || '').toLowerCase().includes('24');
 
-      const lat = typeof r.latitude === 'string' ? Number(r.latitude) : r.latitude;
-      const lng = typeof r.longitude === 'string' ? Number(r.longitude) : r.longitude;
+      const normalizedCoordinates = normalizeSchoolCoordinates(r.latitude, r.longitude);
+      const fallbackCoordinates = extractCoordinatesFromGoogleMapsUrl(r.google_maps_url);
+      const latitude = normalizedCoordinates.latitude ?? fallbackCoordinates.latitude;
+      const longitude = normalizedCoordinates.longitude ?? fallbackCoordinates.longitude;
 
       let distance: string | undefined = undefined;
       let distanceKm: number | undefined = undefined;
-      if (coords && lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
-        const km = getDistanceKm(coords.latitude, coords.longitude, lat, lng);
+      if (coords && latitude != null && longitude != null) {
+        const km = getDistanceKm(coords.latitude, coords.longitude, latitude, longitude);
         distanceKm = km;
         distance = formatDistance(km);
       }
@@ -106,8 +181,8 @@ export const SchoolsScreen: React.FC = () => {
         tags: r.category ? [r.category] : undefined,
         phone: r.telephone || undefined,
         website: r.website || undefined,
-        latitude: lat ?? undefined,
-        longitude: lng ?? undefined,
+        latitude,
+        longitude,
         // internal helper for sorting; not part of School type but safe on JS objects
         distanceKm,
       };
@@ -168,6 +243,14 @@ export const SchoolsScreen: React.FC = () => {
     };
   }, [searchQuery, coords?.latitude, coords?.longitude]);
 
+  useFocusEffect(
+    useCallback(() => {
+      fetchFirstPage({ silent: true }).catch(() => {
+        // keep current list if focus refresh fails
+      });
+    }, [fetchFirstPage]),
+  );
+
   const onRefresh = useCallback(async () => {
     if (refreshing) return;
     setRefreshing(true);
@@ -179,6 +262,11 @@ export const SchoolsScreen: React.FC = () => {
       setRefreshing(false);
     }
   }, [fetchFirstPage, refreshing]);
+
+  const refreshMapData = useCallback(async () => {
+    if (refreshing) return;
+    await onRefresh();
+  }, [onRefresh, refreshing]);
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !hasMore) return;
@@ -360,7 +448,7 @@ export const SchoolsScreen: React.FC = () => {
             initialRegion={ISTANBUL_REGION}
             showsUserLocation
             showsMyLocationButton={false}
-            followsUserLocation={Boolean(coords)}
+            followsUserLocation={false}
           >
             {filtered.map((school) =>
               school.latitude != null && school.longitude != null ? (
@@ -409,6 +497,22 @@ export const SchoolsScreen: React.FC = () => {
               <Icon name="map-marker-multiple-outline" size={22} color="#FFFFFF" />
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity
+            activeOpacity={0.9}
+            disabled={refreshing}
+            onPress={() => {
+              void refreshMapData();
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={[
+              styles.locateFab,
+              styles.refreshFab,
+              { bottom: insets.bottom + 10, right: spacing.lg, opacity: refreshing ? 0.6 : 1 },
+            ]}
+          >
+            <Icon name="refresh" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
 
           {!coords && locationError && (
             <View
@@ -474,6 +578,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.65)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.16)',
+  },
+  refreshFab: {
+    backgroundColor: 'rgba(72,35,71,0.9)',
   },
   mapWrap: {
     flex: 1,

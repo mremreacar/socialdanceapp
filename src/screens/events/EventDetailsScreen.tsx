@@ -105,6 +105,7 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const [heroHeight, setHeroHeight] = useState(280);
   const [remoteEvent, setRemoteEvent] = useState<{
     title: string;
+    isLesson: boolean;
     dateLabel: string;
     startsAtDate: Date | null;
     venue: string;
@@ -138,6 +139,7 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         const startsAt = new Date(row.starts_at);
         setRemoteEvent({
           title: row.title?.trim() || 'Etkinlik',
+          isLesson: (row.event_type ?? '').trim().toLowerCase() === 'lesson',
           dateLabel: formatStartsAtRangeLabel(row.starts_at, row.ends_at) || '-',
           startsAtDate: Number.isNaN(startsAt.getTime()) ? null : startsAt,
           venue: row.location?.trim() || '-',
@@ -522,21 +524,23 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() =>
-              navigation.navigate('DanceStar', {
-                eventId: route.params.id,
-                eventTitle,
-                attendees: attendeeList,
-              })
-            }
-            activeOpacity={0.8}
-            style={[styles.dqBanner, { backgroundColor: colors.purpleAlpha, borderRadius: radius.xl, padding: spacing.lg, marginTop: spacing.lg }]}
-          >
-            <Icon name="crown" size={24} color={colors.purple} />
-            <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: spacing.md }]}>DanceStar oylamasına katıl</Text>
-            <Icon name="chevron-right" size={20} color={colors.textTertiary} />
-          </TouchableOpacity>
+          {!remoteEvent?.isLesson ? (
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate('DanceStar', {
+                  eventId: route.params.id,
+                  eventTitle,
+                  attendees: attendeeList,
+                })
+              }
+              activeOpacity={0.8}
+              style={[styles.dqBanner, { backgroundColor: colors.purpleAlpha, borderRadius: radius.xl, padding: spacing.lg, marginTop: spacing.lg }]}
+            >
+              <Icon name="crown" size={24} color={colors.purple} />
+              <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: spacing.md }]}>DanceStar oylamasına katıl</Text>
+              <Icon name="chevron-right" size={20} color={colors.textTertiary} />
+            </TouchableOpacity>
+          ) : null}
 
           <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginTop: spacing.xl }} />
           <View style={{ marginTop: spacing.lg }}>

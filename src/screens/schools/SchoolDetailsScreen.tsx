@@ -6,13 +6,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   Share,
-  Image,
   Linking,
   Alert,
   RefreshControl,
   Modal,
   Pressable,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
@@ -35,7 +35,7 @@ const defaultSchool = {
   id: '1',
   name: 'Salsa Academy Istanbul',
   location: 'Kadıköy, İstanbul',
-  image: 'https://picsum.photos/seed/salsa1/400/280',
+  image: '',
   rating: 4.8,
   ratingCount: 124,
   description: '',
@@ -53,6 +53,8 @@ const defaultSchool = {
 type SchoolDetailsVm = typeof defaultSchool & {
   phone?: string;
   website?: string;
+  isOpen?: boolean;
+  statusLabel?: string;
 };
 
 function isMissingSchoolEventsError(error: unknown): boolean {
@@ -113,6 +115,7 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contactModalVisible, setContactModalVisible] = useState(false);
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,10 +161,13 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         [row.district, row.city].filter(Boolean).join(', ') ||
         row.address ||
         defaultSchool.location;
-      const image =
-        row.image_url ||
-        `https://picsum.photos/seed/${encodeURIComponent(row.name)}/700/500`;
+      const image = row.image_url?.trim() || '';
       const description = (row as any).snippet ? String((row as any).snippet).trim() : '';
+      const statusText = row.current_status ? String(row.current_status).trim() : '';
+      const isOpen =
+        statusText.toLowerCase().includes('açık') ||
+        statusText.toLowerCase().includes('open') ||
+        statusText.toLowerCase().includes('24');
 
       const schoolEvents =
         eventRows.length > 0
@@ -193,6 +199,8 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         description,
         phone: row.telephone || undefined,
         website: row.website || undefined,
+        isOpen: statusText ? isOpen : undefined,
+        statusLabel: statusText || undefined,
         classes: schoolClasses,
         events: schoolEvents,
       });
@@ -219,6 +227,15 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [loadSchool, refreshing]);
 
   const currentSchool: SchoolDetailsVm = useMemo(() => school ?? defaultSchool, [school]);
+  const hasSchoolImage = Boolean(currentSchool.image?.trim());
+  const heroImageSource =
+    hasSchoolImage && !imageLoadFailed
+      ? { uri: currentSchool.image.trim() }
+      : require('../../../assets/social_dance.png');
+
+  useEffect(() => {
+    setImageLoadFailed(false);
+  }, [currentSchool.image]);
 
   const handleShare = () => {
     Share.share({
@@ -314,12 +331,47 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             }
           >
             <View style={[styles.heroWrap, { marginTop: insets.top }]}>
-              <Image source={{ uri: currentSchool.image }} style={styles.heroImage} />
+              <Image
+                source={heroImageSource}
+                style={styles.heroImage}
+                contentFit={hasSchoolImage && !imageLoadFailed ? 'cover' : 'contain'}
+                placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+                transition={200}
+                onError={() => setImageLoadFailed(true)}
+              />
               <View style={[styles.heroGradient, { backgroundColor: 'transparent' }]} />
             </View>
 
             <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.xl }}>
               <Text style={[typography.h3, { color: '#FFFFFF' }]}>{currentSchool.name}</Text>
+              {typeof currentSchool.isOpen === 'boolean' ? (
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      marginTop: spacing.xs,
+                      borderRadius: radius.full,
+                      backgroundColor: 'rgba(75,21,75,0.72)',
+                      borderColor: 'rgba(255,255,255,0.12)',
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.statusDot,
+                      { backgroundColor: currentSchool.isOpen ? '#22C55E' : '#EF4444' },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      typography.caption,
+                      { color: 'rgba(255,255,255,0.82)' },
+                    ]}
+                  >
+                    {currentSchool.isOpen ? 'Açık' : 'Kapalı'}
+                  </Text>
+                </View>
+              ) : null}
               <View style={[styles.row, { marginTop: spacing.sm }]}>
                 <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
                   <Icon name="map-marker-outline" size={18} color={colors.primary} />
@@ -517,7 +569,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   heroWrap: { position: 'relative', height: 280 },
-  heroImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  heroImage: { width: '100%', height: '100%' },
   heroGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 80 },
   headerRightStack: { alignItems: 'center' },
   headerOverlayBtn: {
@@ -556,5 +608,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    marginRight: 6,
   },
 });

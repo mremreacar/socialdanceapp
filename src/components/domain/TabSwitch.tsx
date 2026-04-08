@@ -22,6 +22,12 @@ interface TabSwitchProps {
   textColor?: string;
   /** Seçili sekme yazı rengi */
   activeTextColor?: string;
+  /** Etiketin satır kırmasına izin ver */
+  allowWrap?: boolean;
+  /** Konteyner yüksekliği */
+  height?: number;
+  /** Yazı boyutu override */
+  fontSize?: number;
 }
 
 export const TabSwitch: React.FC<TabSwitchProps> = ({
@@ -33,6 +39,9 @@ export const TabSwitch: React.FC<TabSwitchProps> = ({
   indicatorColor,
   textColor,
   activeTextColor,
+  allowWrap = false,
+  height = 44,
+  fontSize,
 }) => {
   const { colors, spacing, radius, typography } = useTheme();
   const containerRadiusValue = containerRadius ?? radius.lg;
@@ -72,6 +81,7 @@ export const TabSwitch: React.FC<TabSwitchProps> = ({
           backgroundColor: bgColor,
           borderRadius: containerRadiusValue,
           padding: 2,
+          height,
         },
       ]}
     >
@@ -100,8 +110,10 @@ export const TabSwitch: React.FC<TabSwitchProps> = ({
                 fontWeight: activeTab === tab.key ? '700' : '500',
                 color: activeTab === tab.key ? activeColor : inactiveColor,
                 textAlign: 'center',
+                fontSize,
               },
             ]}
+            numberOfLines={allowWrap ? 2 : 1}
           >
             {tab.label}
           </Text>
@@ -118,7 +130,6 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 44,
     position: 'relative',
   },
   indicator: {

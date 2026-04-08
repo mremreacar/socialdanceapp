@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, RefreshControl, ScrollView, Modal } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../theme';
@@ -13,8 +13,8 @@ import { Icon } from '../../components/ui/Icon';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../../types/navigation';
 import { ApiError, hasSupabaseConfig } from '../../services/api/apiClient';
-import { listAllSchoolEvents } from '../../services/api/schoolEvents';
-import { schoolEventAttendeesService } from '../../services/api/schoolEventAttendees';
+import { formatLessonPrice, instructorLessonsService } from '../../services/api/instructorLessons';
+import { instructorLessonReservationsService } from '../../services/api/instructorLessonReservations';
 import { storage } from '../../services/storage';
 import type { MyEventCardData } from '../../components/domain/MyEventCard';
 
@@ -22,37 +22,45 @@ type Nav = NativeStackNavigationProp<MainStackParamList>;
 type EventTimeFilter = 'Tümü' | 'Bugün' | 'Bu Hafta' | 'Bu Ay';
 type ReservationFilter = 'Tümü' | 'Katıldıklarım' | 'Henüz Katılmadıklarım';
 type CityFilter = 'Tümü' | string;
-type EventListItem = MyEventCardData & {
+type LessonTypeFilter = 'Tümü' | 'Özel ders' | 'Grup dersi';
+type DeliveryModeFilter = 'Tümü' | 'Online' | 'Yüz yüze';
+type LessonListItem = MyEventCardData & {
   entityId: string;
   rawDate: Date;
   city: string | null;
+  lessonType: Exclude<LessonTypeFilter, 'Tümü'>;
+  deliveryMode: Exclude<DeliveryModeFilter, 'Tümü'>;
+  instructorUserId?: string;
+  instructorName?: string;
+  instructorUsername?: string;
 };
 
 const timeFilters: EventTimeFilter[] = ['Tümü', 'Bugün', 'Bu Hafta', 'Bu Ay'];
 const reservationFilters: ReservationFilter[] = ['Tümü', 'Katıldıklarım', 'Henüz Katılmadıklarım'];
+const lessonTypeFilters: LessonTypeFilter[] = ['Tümü', 'Özel ders', 'Grup dersi'];
+const deliveryModeFilters: DeliveryModeFilter[] = ['Tümü', 'Online', 'Yüz yüze'];
 
 function normalizeText(value: string): string {
   return value.trim().toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-function toObject(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
-export const MyEventsScreen: React.FC = () => {
+export const LessonsScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const { colors, spacing, typography } = useTheme();
-  const [events, setEvents] = useState<EventListItem[]>([]);
+  const [lessons, setLessons] = useState<LessonListItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(() => new Set());
-  const [joinedEventIds, setJoinedEventIds] = useState<Set<string>>(() => new Set());
+  const [joinedLessonIds, setJoinedLessonIds] = useState<Set<string>>(() => new Set());
   const [reservingId, setReservingId] = useState<string | null>(null);
   const [activeTimeFilter, setActiveTimeFilter] = useState<EventTimeFilter>('Tümü');
   const [activeReservationFilter, setActiveReservationFilter] = useState<ReservationFilter>('Tümü');
   const [activeCityFilter, setActiveCityFilter] = useState<CityFilter>('Tümü');
+  const [activeLessonTypeFilter, setActiveLessonTypeFilter] = useState<LessonTypeFilter>('Tümü');
+  const [activeDeliveryModeFilter, setActiveDeliveryModeFilter] = useState<DeliveryModeFilter>('Tümü');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const isClosingFilterSheetRef = useRef(false);
 
   const toggleFavorite = (id: string) => {
     setFavoritedIds((prev) => {
@@ -63,7 +71,7 @@ export const MyEventsScreen: React.FC = () => {
     });
   };
 
-  const handleReservation = async (eventId: string) => {
+  const handleLessonReservation = async (lessonId: string) => {
     if (!hasSupabaseConfig()) {
       setToastMessage('Bu özellik için uygulama yapılandırması gerekir.');
       return;
@@ -73,11 +81,11 @@ export const MyEventsScreen: React.FC = () => {
       setToastMessage('Rezervasyon için lütfen giriş yapın.');
       return;
     }
-    setReservingId(eventId);
+    setReservingId(`lesson:${lessonId}`);
     try {
-      await schoolEventAttendeesService.join(eventId);
-      setJoinedEventIds((prev) => new Set(prev).add(eventId));
-      setToastMessage('Etkinlik rezervasyonunuz oluşturuldu.');
+      await instructorLessonReservationsService.join(lessonId);
+      setJoinedLessonIds((prev) => new Set(prev).add(lessonId));
+      setToastMessage('Ders rezervasyonunuz oluşturuldu.');
     } catch (e: unknown) {
       const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Kayıt yapılamadı.';
       setToastMessage(msg);
@@ -86,112 +94,123 @@ export const MyEventsScreen: React.FC = () => {
     }
   };
 
-  const loadEvents = useCallback(async () => {
-    const eventRows = await listAllSchoolEvents(100);
-    const mappedEvents = eventRows
-      .filter((row) => (row.event_type ?? '').trim().toLowerCase() !== 'lesson')
-      .map((row) => {
-        const startsAt = new Date(row.starts_at);
-        if (Number.isNaN(startsAt.getTime())) return null;
-        const locationPlace = toObject(row.location_place);
-        const city =
-          (row.city ?? '').trim() ||
-          (typeof locationPlace?.city === 'string' && locationPlace.city.trim() ? locationPlace.city.trim() : null);
+  const loadLessons = useCallback(async () => {
+    const lessonRows = await instructorLessonsService.listPublished(100).catch(() => []);
+    const mappedLessons = lessonRows
+      .map((lesson) => {
+        const startsAt = lesson.nextOccurrenceAt ? new Date(lesson.nextOccurrenceAt) : null;
+        if (!startsAt || Number.isNaN(startsAt.getTime())) return null;
+        const city = lesson.schoolCity?.trim() || null;
+        const locationParts = [
+          lesson.schoolName?.trim() || '',
+          lesson.scheduleSummary?.trim() || '',
+          [lesson.schoolDistrict?.trim(), lesson.schoolCity?.trim()].filter(Boolean).join(', '),
+        ].filter(Boolean);
+        const location = locationParts.join(' · ') || `${lesson.instructorName} · ${formatLessonPrice(lesson)} · ${lesson.level}`;
+        const lessonType: LessonListItem['lessonType'] = lesson.participantLimit === 1 ? 'Özel ders' : 'Grup dersi';
+        const deliveryMode: LessonListItem['deliveryMode'] = lesson.deliveryMode === 'online' ? 'Online' : 'Yüz yüze';
         return {
-          id: `event:${row.id}`,
-          entityId: row.id,
-          title: row.title?.trim() || 'Etkinlik',
-          location: row.location?.trim() || 'Konum yakında açıklanacak',
-          date: startsAt.toLocaleString('tr-TR', {
+          id: `lesson:${lesson.id}`,
+          entityId: lesson.id,
+          title: lesson.title?.trim() || 'Ders',
+          location,
+          date: `${startsAt.toLocaleString('tr-TR', {
             weekday: 'long',
             day: '2-digit',
             month: 'long',
             hour: '2-digit',
             minute: '2-digit',
-          }),
+          })} · ${formatLessonPrice(lesson)}`,
           day: startsAt.toLocaleDateString('tr-TR', { day: '2-digit' }),
           month: startsAt.toLocaleDateString('tr-TR', { month: 'short' }).toUpperCase(),
-          image: row.image_url?.trim() || '',
+          image: lesson.imageUrl || '',
           isFavorite: false,
           isPopular: false,
           attendees: 0,
-          attendeeAvatars: [],
+          attendeeAvatars: lesson.instructorAvatarUrl ? [lesson.instructorAvatarUrl] : [],
           isDanceStar: false,
           rawDate: startsAt,
           city,
+          lessonType,
+          deliveryMode,
+          instructorUserId: lesson.instructorUserId,
+          instructorName: lesson.instructorName,
+          instructorUsername: lesson.instructorUsername,
         };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null)
       .sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime());
 
-    setEvents(mappedEvents);
+    setLessons(mappedLessons);
 
-    if (!hasSupabaseConfig() || mappedEvents.length === 0) {
-      setJoinedEventIds(new Set());
+    if (!hasSupabaseConfig() || mappedLessons.length === 0) {
+      setJoinedLessonIds(new Set());
       return;
     }
     const token = await storage.getAccessToken();
     if (!token) {
-      setJoinedEventIds(new Set());
+      setJoinedLessonIds(new Set());
       return;
     }
     try {
-      const eventIds = mappedEvents.map((item) => item.entityId);
-      const joinedEvents = eventIds.length > 0 ? await schoolEventAttendeesService.listJoinedEventIds(eventIds) : [];
-      setJoinedEventIds(new Set(joinedEvents));
+      const joinedLessons = await instructorLessonReservationsService.listJoinedLessonIds(mappedLessons.map((item) => item.entityId)).catch(() => []);
+      setJoinedLessonIds(new Set(joinedLessons));
     } catch {
-      setJoinedEventIds(new Set());
+      setJoinedLessonIds(new Set());
     }
   }, []);
 
   useEffect(() => {
-    void loadEvents().catch(() => {
-      setEvents([]);
-      setJoinedEventIds(new Set());
+    void loadLessons().catch(() => {
+      setLessons([]);
+      setJoinedLessonIds(new Set());
     });
-  }, [loadEvents]);
+  }, [loadLessons]);
 
   useFocusEffect(
     useCallback(() => {
-      void loadEvents().catch(() => {
-        setEvents([]);
-        setJoinedEventIds(new Set());
+      void loadLessons().catch(() => {
+        setLessons([]);
+        setJoinedLessonIds(new Set());
       });
-    }, [loadEvents]),
+    }, [loadLessons]),
   );
 
   const cityOptions = useMemo(
-    () => ['Tümü', ...Array.from(new Set(events.map((event) => event.city).filter((city): city is string => Boolean(city))))] as CityFilter[],
-    [events],
+    () => ['Tümü', ...Array.from(new Set(lessons.map((item) => item.city).filter((city): city is string => Boolean(city))))] as CityFilter[],
+    [lessons],
   );
 
   const filtered = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const normalizedQuery = normalizeText(searchQuery);
-
-    return events.filter((event) => {
-      const eventDay = new Date(event.rawDate.getFullYear(), event.rawDate.getMonth(), event.rawDate.getDate());
-      if (activeTimeFilter === 'Bugün' && eventDay.getTime() !== startOfToday.getTime()) return false;
+    return lessons.filter((lesson) => {
+      const lessonDay = new Date(lesson.rawDate.getFullYear(), lesson.rawDate.getMonth(), lesson.rawDate.getDate());
+      if (activeTimeFilter === 'Bugün' && lessonDay.getTime() !== startOfToday.getTime()) return false;
       if (activeTimeFilter === 'Bu Hafta') {
         const endOfRange = new Date(startOfToday);
         endOfRange.setDate(endOfRange.getDate() + 7);
-        if (eventDay < startOfToday || eventDay > endOfRange) return false;
+        if (lessonDay < startOfToday || lessonDay > endOfRange) return false;
       }
       if (activeTimeFilter === 'Bu Ay') {
-        if (eventDay.getMonth() !== startOfToday.getMonth() || eventDay.getFullYear() !== startOfToday.getFullYear()) return false;
+        if (lessonDay.getMonth() !== startOfToday.getMonth() || lessonDay.getFullYear() !== startOfToday.getFullYear()) return false;
       }
-      const hasJoined = joinedEventIds.has(event.entityId);
+      const hasJoined = joinedLessonIds.has(lesson.entityId);
       if (activeReservationFilter === 'Katıldıklarım' && !hasJoined) return false;
       if (activeReservationFilter === 'Henüz Katılmadıklarım' && hasJoined) return false;
-      if (activeCityFilter !== 'Tümü' && event.city !== activeCityFilter) return false;
+      if (activeCityFilter !== 'Tümü' && lesson.city !== activeCityFilter) return false;
+      if (activeLessonTypeFilter !== 'Tümü' && lesson.lessonType !== activeLessonTypeFilter) return false;
+      if (activeDeliveryModeFilter !== 'Tümü' && lesson.deliveryMode !== activeDeliveryModeFilter) return false;
       if (normalizedQuery) {
-        const haystack = [event.title, event.location, event.city ?? ''].map((value) => normalizeText(value)).join(' ');
+        const haystack = [lesson.title, lesson.location, lesson.city ?? '', lesson.instructorName ?? '', lesson.instructorUsername ?? '']
+          .map((value) => normalizeText(value))
+          .join(' ');
         if (!haystack.includes(normalizedQuery)) return false;
       }
       return true;
     });
-  }, [activeCityFilter, activeReservationFilter, activeTimeFilter, events, joinedEventIds, searchQuery]);
+  }, [activeCityFilter, activeDeliveryModeFilter, activeLessonTypeFilter, activeReservationFilter, activeTimeFilter, joinedLessonIds, lessons, searchQuery]);
 
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
@@ -199,8 +218,10 @@ export const MyEventsScreen: React.FC = () => {
     if (activeTimeFilter !== 'Tümü') labels.push(activeTimeFilter);
     if (activeReservationFilter !== 'Tümü') labels.push(activeReservationFilter);
     if (activeCityFilter !== 'Tümü') labels.push(activeCityFilter);
+    if (activeLessonTypeFilter !== 'Tümü') labels.push(activeLessonTypeFilter);
+    if (activeDeliveryModeFilter !== 'Tümü') labels.push(activeDeliveryModeFilter);
     return labels;
-  }, [activeCityFilter, activeReservationFilter, activeTimeFilter, searchQuery]);
+  }, [activeCityFilter, activeDeliveryModeFilter, activeLessonTypeFilter, activeReservationFilter, activeTimeFilter, searchQuery]);
   const activeFilterCount = activeFilterLabels.length;
 
   const clearAllFilters = useCallback(() => {
@@ -208,51 +229,54 @@ export const MyEventsScreen: React.FC = () => {
     setActiveTimeFilter('Tümü');
     setActiveReservationFilter('Tümü');
     setActiveCityFilter('Tümü');
+    setActiveLessonTypeFilter('Tümü');
+    setActiveDeliveryModeFilter('Tümü');
   }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    void loadEvents()
+    void loadLessons()
       .catch(() => {
-        setEvents([]);
-        setJoinedEventIds(new Set());
+        setLessons([]);
+        setJoinedLessonIds(new Set());
       })
       .finally(() => setRefreshing(false));
-  }, [loadEvents]);
+  }, [loadLessons]);
 
   const openDrawer = () => (navigation.getParent() as any)?.openDrawer?.();
+  const closeFilterSheet = useCallback(() => {
+    if (isClosingFilterSheetRef.current) return;
+    isClosingFilterSheetRef.current = true;
+    setFilterSheetVisible(false);
+    setTimeout(() => {
+      isClosingFilterSheetRef.current = false;
+    }, 250);
+  }, []);
 
   return (
     <Screen>
       <CollapsingHeaderScrollView
         headerProps={{
-          title: 'Etkinlikler',
+          title: 'Dersler',
           showLogo: false,
           showBack: false,
           showMenu: true,
           onMenuPress: openDrawer,
           showNotification: true,
           onNotificationPress: () => (navigation.getParent() as any)?.navigate('Notifications'),
-          rightIcon: 'plus',
-          onRightPress: () => navigation.navigate('EditEvent'),
         }}
         headerExtra={
           <View>
             <View style={styles.searchRow}>
               <View style={{ flex: 1 }}>
-                <SearchBar
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholder="Etkinlik veya şehir ara"
-                  backgroundColor="#482347"
-                />
+                <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Ders, eğitmen veya şehir ara" backgroundColor="#482347" />
               </View>
             </View>
             <View style={[styles.headerFilterRow, { marginTop: 10 }]}>
               <View>
                 <Text style={[typography.captionBold, { color: 'rgba(255,255,255,0.82)' }]}>Filtreler</Text>
                 <Text style={[typography.caption, { color: 'rgba(255,255,255,0.62)', marginTop: 2 }]}>
-                  {activeFilterCount > 0 ? `${activeFilterCount} filtre aktif` : 'Tüm etkinlikler gösteriliyor'}
+                  {activeFilterCount > 0 ? `${activeFilterCount} filtre aktif` : 'Tüm dersler gösteriliyor'}
                 </Text>
               </View>
               <TouchableOpacity
@@ -292,36 +316,39 @@ export const MyEventsScreen: React.FC = () => {
               Aktif filtreler: {activeFilterLabels.join(' • ')}
             </Text>
           ) : null}
-
           {filtered.length > 0 ? (
-            filtered.map((event) => (
-              <View key={event.id} style={{ marginBottom: spacing.lg }}>
+            filtered.map((lesson) => (
+              <View key={lesson.id} style={{ marginBottom: spacing.lg }}>
                 <MyEventCard
                   event={{
-                    id: event.id,
-                    title: event.title,
-                    location: event.location,
-                    date: event.date,
-                    day: event.day,
-                    month: event.month,
-                    image: event.image ?? '',
-                    isFavorite: favoritedIds.has(String(event.id)),
-                    isPopular: event.isPopular,
-                    attendees: event.attendees,
-                    attendeeAvatars: event.attendeeAvatars,
-                    isDanceStar: event.isDanceStar,
+                    id: lesson.id,
+                    title: lesson.title,
+                    location: lesson.location,
+                    date: lesson.date,
+                    day: lesson.day,
+                    month: lesson.month,
+                    image: lesson.image ?? '',
+                    isFavorite: favoritedIds.has(String(lesson.id)),
+                    isPopular: lesson.isPopular,
+                    attendees: lesson.attendees,
+                    attendeeAvatars: lesson.attendeeAvatars,
+                    isDanceStar: lesson.isDanceStar,
                   }}
-                  onPress={() => navigation.navigate('EventDetails', { id: event.entityId, fromFavorites: true })}
-                  onFavoritePress={() => toggleFavorite(String(event.id))}
-                  hasJoinedReservation={joinedEventIds.has(event.entityId)}
-                  reservationLoading={reservingId === event.entityId}
-                  onReservationPress={() => void handleReservation(event.entityId)}
-                  onAvatarPress={(index, avatarUri) =>
-                    (navigation.getParent() as any)?.navigate('UserProfile', {
-                      userId: `ev-${event.entityId}-${index}`,
-                      name: `Dansçı ${index + 1}`,
-                      avatar: avatarUri,
-                    })
+                  onPress={() => navigation.navigate('ClassDetails', { id: lesson.entityId })}
+                  onFavoritePress={() => toggleFavorite(String(lesson.id))}
+                  hasJoinedReservation={joinedLessonIds.has(lesson.entityId)}
+                  reservationLoading={reservingId === `lesson:${lesson.entityId}`}
+                  actionLabel="Derse Katıl"
+                  onReservationPress={() => void handleLessonReservation(lesson.entityId)}
+                  onAvatarPress={(_index, avatarUri) =>
+                    lesson.instructorUserId
+                      ? (navigation.getParent() as any)?.navigate('UserProfile', {
+                          userId: lesson.instructorUserId,
+                          name: lesson.instructorName || 'Eğitmen',
+                          username: lesson.instructorUsername,
+                          avatar: avatarUri,
+                        })
+                      : undefined
                   }
                 />
               </View>
@@ -329,7 +356,7 @@ export const MyEventsScreen: React.FC = () => {
           ) : (
             <EmptyState
               icon="calendar-blank-outline"
-              title="Bu filtreye uygun etkinlik yok."
+              title="Bu filtreye uygun ders yok."
               subtitle={activeFilterLabels.length > 0 ? 'Filtreleri temizleyip tekrar deneyebilirsin.' : undefined}
               actionLabel={activeFilterLabels.length > 0 ? 'Filtreleri Temizle' : undefined}
               onAction={activeFilterLabels.length > 0 ? clearAllFilters : undefined}
@@ -338,9 +365,9 @@ export const MyEventsScreen: React.FC = () => {
         </View>
       </CollapsingHeaderScrollView>
 
-      <Modal visible={filterSheetVisible} transparent animationType="slide" onRequestClose={() => setFilterSheetVisible(false)}>
+      <Modal visible={filterSheetVisible} transparent animationType="slide" onRequestClose={closeFilterSheet}>
         <View style={styles.sheetOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setFilterSheetVisible(false)} />
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeFilterSheet} />
           <View style={[styles.sheetBox, { backgroundColor: colors.headerBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: 28 }]}>
             <View style={[styles.sheetHandle, { backgroundColor: colors.textTertiary }]} />
             <View style={[styles.sheetHeaderRow, { marginBottom: spacing.sm }]}>
@@ -351,15 +378,26 @@ export const MyEventsScreen: React.FC = () => {
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={() => setFilterSheetVisible(false)}
+                onPress={closeFilterSheet}
                 activeOpacity={0.8}
                 style={[styles.sheetCloseBtn, { borderColor: 'rgba(255,255,255,0.16)', backgroundColor: 'rgba(255,255,255,0.06)' }]}
               >
                 <Icon name="close" size={18} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: spacing.md }}>
-              <Text style={[typography.captionBold, styles.sheetSectionTitle, { color: 'rgba(255,255,255,0.85)' }]}>Zaman</Text>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: spacing.md }}
+              bounces
+              alwaysBounceVertical
+              scrollEventThrottle={16}
+              onScroll={(event) => {
+                if (event.nativeEvent.contentOffset.y < -48) {
+                  closeFilterSheet();
+                }
+              }}
+            >
+              <Text style={[typography.captionBold, styles.sheetSectionTitle, { color: 'rgba(255,255,255,0.85)' }]}>Tarih</Text>
               <View style={styles.chipWrap}>
                 {timeFilters.map((filter) => (
                   <Chip key={filter} label={filter} selected={activeTimeFilter === filter} onPress={() => setActiveTimeFilter(filter)} icon="calendar-outline" />
@@ -369,6 +407,30 @@ export const MyEventsScreen: React.FC = () => {
               <View style={styles.chipWrap}>
                 {reservationFilters.map((filter) => (
                   <Chip key={filter} label={filter} selected={activeReservationFilter === filter} onPress={() => setActiveReservationFilter(filter)} icon="account-group-outline" />
+                ))}
+              </View>
+              <Text style={[typography.captionBold, styles.sheetSectionTitle, { color: 'rgba(255,255,255,0.85)' }]}>Ders Türü</Text>
+              <View style={styles.chipWrap}>
+                {lessonTypeFilters.map((filter) => (
+                  <Chip
+                    key={filter}
+                    label={filter}
+                    selected={activeLessonTypeFilter === filter}
+                    onPress={() => setActiveLessonTypeFilter(filter)}
+                    icon="school-outline"
+                  />
+                ))}
+              </View>
+              <Text style={[typography.captionBold, styles.sheetSectionTitle, { color: 'rgba(255,255,255,0.85)' }]}>Katılım Şekli</Text>
+              <View style={styles.chipWrap}>
+                {deliveryModeFilters.map((filter) => (
+                  <Chip
+                    key={filter}
+                    label={filter}
+                    selected={activeDeliveryModeFilter === filter}
+                    onPress={() => setActiveDeliveryModeFilter(filter)}
+                    icon={filter === 'Online' ? 'video-outline' : 'map-marker-outline'}
+                  />
                 ))}
               </View>
               {cityOptions.length > 1 ? (
@@ -391,7 +453,7 @@ export const MyEventsScreen: React.FC = () => {
                 <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Temizle</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => setFilterSheetVisible(false)}
+                onPress={closeFilterSheet}
                 activeOpacity={0.85}
                 style={[styles.footerButton, { borderColor: 'transparent', backgroundColor: colors.primary }]}
               >

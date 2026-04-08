@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../theme';
@@ -38,13 +39,14 @@ import {
   parseTlToCents,
 } from '../../services/api/instructorLessons';
 import {
-  INSTRUCTOR_LOCATION_CHIPS,
   INSTRUCTOR_WEEKDAYS,
   instructorLocationLabel,
   instructorWeekdayLabel,
 } from './instructorScheduleConstants';
 
 const LEVELS = ['Tüm Seviyeler', 'Başlangıç', 'Orta', 'İleri'] as const;
+const LESSON_FORMAT_OPTIONS = ['Özel ders', 'Grup dersi'] as const;
+const LESSON_DELIVERY_OPTIONS = ['Online', 'Yüz yüze'] as const;
 const LESSON_CURRENCIES = [
   { code: 'TRY', label: 'TL' },
   { code: 'USD', label: 'USD' },
@@ -86,6 +88,8 @@ export const InstructorLessonsTab: React.FC = () => {
   const [priceText, setPriceText] = useState('');
   const [currency, setCurrency] = useState<string>('TRY');
   const [participantLimitText, setParticipantLimitText] = useState('');
+  const [lessonFormat, setLessonFormat] = useState<(typeof LESSON_FORMAT_OPTIONS)[number]>('Grup dersi');
+  const [lessonDelivery, setLessonDelivery] = useState<(typeof LESSON_DELIVERY_OPTIONS)[number]>('Yüz yüze');
   const [isPublished, setIsPublished] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<InstructorLessonModel | null>(null);
@@ -94,14 +98,11 @@ export const InstructorLessonsTab: React.FC = () => {
   const [lessonEndsAt, setLessonEndsAt] = useState<Date | null>(null);
   const [programWeekday, setProgramWeekday] = useState(0);
   const [programStartTime, setProgramStartTime] = useState('19:00');
-  const [programLocationType, setProgramLocationType] =
-    useState<InstructorScheduleSlotModel['locationType']>('in_person');
   const [programAddress, setProgramAddress] = useState('');
   const [pendingSlots, setPendingSlots] = useState<PendingScheduleSlot[]>([]);
   const [modalSlots, setModalSlots] = useState<InstructorScheduleSlotModel[]>([]);
   const [loadingModalSlots, setLoadingModalSlots] = useState(false);
   const [programAdding, setProgramAdding] = useState(false);
-  const [slotDeleteTarget, setSlotDeleteTarget] = useState<InstructorScheduleSlotModel | null>(null);
   const [detailLesson, setDetailLesson] = useState<InstructorLessonModel | null>(null);
   const [detailSlots, setDetailSlots] = useState<InstructorScheduleSlotModel[]>([]);
   const [loadingDetailSlots, setLoadingDetailSlots] = useState(false);
@@ -114,9 +115,18 @@ export const InstructorLessonsTab: React.FC = () => {
   const resetProgramForm = useCallback(() => {
     setProgramWeekday(0);
     setProgramStartTime('19:00');
-    setProgramLocationType('in_person');
     setProgramAddress('');
   }, []);
+  const programLocationType: InstructorScheduleSlotModel['locationType'] =
+    lessonDelivery === 'Online' ? 'online' : 'in_person';
+
+  useEffect(() => {
+    if (lessonDelivery === 'Online') {
+      if (programAddress.trim()) {
+        setProgramAddress('');
+      }
+    }
+  }, [lessonDelivery, programAddress]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -248,12 +258,13 @@ export const InstructorLessonsTab: React.FC = () => {
     setPriceText('');
     setCurrency('TRY');
     setParticipantLimitText('');
+    setLessonFormat('Grup dersi');
+    setLessonDelivery('Yüz yüze');
     setIsPublished(true);
     setLessonStartsAt(null);
     setLessonEndsAt(null);
     setPendingSlots([]);
     resetProgramForm();
-    setSlotDeleteTarget(null);
     setErrorBanner(null);
     setModalOpen(true);
   };
@@ -277,12 +288,13 @@ export const InstructorLessonsTab: React.FC = () => {
     setParticipantLimitText(
       lesson.participantLimit != null && lesson.participantLimit > 0 ? String(lesson.participantLimit) : '',
     );
+    setLessonFormat(lesson.lessonFormat === 'private' ? 'Özel ders' : 'Grup dersi');
+    setLessonDelivery(lesson.lessonDelivery === 'online' ? 'Online' : 'Yüz yüze');
     setIsPublished(lesson.isPublished);
     setLessonStartsAt(lessonStartsAtToDate(lesson.startsAt));
     setLessonEndsAt(lessonStartsAtToDate(lesson.endsAt));
     setPendingSlots([]);
     resetProgramForm();
-    setSlotDeleteTarget(null);
     setErrorBanner(null);
     setModalOpen(true);
   };
@@ -298,7 +310,6 @@ export const InstructorLessonsTab: React.FC = () => {
     setModalOpen(false);
     setEditing(null);
     setPendingSlots([]);
-    setSlotDeleteTarget(null);
     setCityListOpen(false);
     setDanceListOpen(false);
   };
@@ -412,18 +423,33 @@ export const InstructorLessonsTab: React.FC = () => {
     );
   };
 
-  const onConfirmDeleteModalSlot = async () => {
-    if (!slotDeleteTarget || !editing) return;
-    const id = slotDeleteTarget.id;
+  const onDeleteModalSlot = async (slot: InstructorScheduleSlotModel) => {
+    if (!editing) return;
     try {
-      await instructorScheduleService.removeSlot(id);
-      setSlotDeleteTarget(null);
+      await instructorScheduleService.removeSlot(slot.id);
       const list = await instructorScheduleService.listByLesson(editing.id);
       setModalSlots(list);
     } catch (e: unknown) {
       setErrorBanner(e instanceof Error ? e.message : 'Satır silinemedi.');
-      setSlotDeleteTarget(null);
     }
+  };
+
+  const promptDeleteModalSlot = (slot: InstructorScheduleSlotModel) => {
+    Alert.alert(
+      'Program satırını sil',
+      'Bu haftalık satırı silmek istiyor musunuz?',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: () => {
+            void onDeleteModalSlot(slot);
+          },
+        },
+      ],
+      { cancelable: true },
+    );
   };
 
   const onSaveLesson = async () => {
@@ -435,7 +461,7 @@ export const InstructorLessonsTab: React.FC = () => {
       setErrorBanner('Bitiş tarihi başlangıçtan sonra olmalı.');
       return;
     }
-    const participantLimit = parseParticipantLimit(participantLimitText);
+    const participantLimit = lessonFormat === 'Özel ders' ? 1 : parseParticipantLimit(participantLimitText);
     const cents = parseTlToCents(priceText);
     setSaving(true);
     setErrorBanner(null);
@@ -451,6 +477,8 @@ export const InstructorLessonsTab: React.FC = () => {
         priceCents: cents,
         currency,
         participantLimit,
+        lessonFormat: lessonFormat === 'Özel ders' ? ('private' as const) : ('group' as const),
+        lessonDelivery: lessonDelivery === 'Online' ? ('online' as const) : ('in_person' as const),
         level,
         isPublished,
         startsAt: parseLessonStartsAtToIso(lessonStartsAt),
@@ -636,9 +664,26 @@ export const InstructorLessonsTab: React.FC = () => {
         >
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeModal} />
           <View style={[styles.modalBox, { backgroundColor: colors.headerBg ?? '#2C1C2D', borderRadius: radius.xl }]}>
-            <Text style={[typography.h4, { color: '#FFFFFF', marginBottom: spacing.md }]}>
-              {editing ? 'Dersi düzenle' : 'Yeni ders'}
-            </Text>
+            <View style={[styles.modalHeaderRow, { marginBottom: spacing.md }]}>
+              <Text style={[typography.h4, { color: '#FFFFFF', flex: 1, paddingRight: spacing.sm }]}>
+                {editing ? 'Dersi düzenle' : 'Yeni ders'}
+              </Text>
+              <TouchableOpacity
+                onPress={closeModal}
+                activeOpacity={0.8}
+                style={[
+                  styles.modalCloseBtn,
+                  {
+                    borderColor: 'rgba(255,255,255,0.16)',
+                    backgroundColor: 'rgba(255,255,255,0.06)',
+                  },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Kapat"
+              >
+                <Icon name="close" size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
             {errorBanner && modalOpen ? (
               <Text style={[typography.caption, { color: colors.orange, marginBottom: spacing.sm }]}>{errorBanner}</Text>
             ) : null}
@@ -944,6 +989,41 @@ export const InstructorLessonsTab: React.FC = () => {
                 placeholder="Boş = limitsiz"
                 keyboardType="number-pad"
               />
+              <Text style={[typography.label, { color: '#FFFFFF', marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+                Ders formatı
+              </Text>
+              <View style={styles.chipRow}>
+                {LESSON_FORMAT_OPTIONS.map((option) => (
+                  <View key={option} style={{ marginRight: spacing.sm, marginBottom: spacing.sm }}>
+                    <Chip
+                      label={option}
+                      selected={lessonFormat === option}
+                      onPress={() => {
+                        setLessonFormat(option);
+                        if (option === 'Özel ders') {
+                          setParticipantLimitText('1');
+                        } else if (participantLimitText.trim() === '1') {
+                          setParticipantLimitText('');
+                        }
+                      }}
+                    />
+                  </View>
+                ))}
+              </View>
+              <Text style={[typography.label, { color: '#FFFFFF', marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+                Katılım şekli
+              </Text>
+              <View style={styles.chipRow}>
+                {LESSON_DELIVERY_OPTIONS.map((option) => (
+                  <View key={option} style={{ marginRight: spacing.sm, marginBottom: spacing.sm }}>
+                    <Chip
+                      label={option}
+                      selected={lessonDelivery === option}
+                      onPress={() => setLessonDelivery(option)}
+                    />
+                  </View>
+                ))}
+              </View>
               <View
                 style={{
                   flexDirection: 'row',
@@ -987,22 +1067,7 @@ export const InstructorLessonsTab: React.FC = () => {
 
               <Input label="Saat" value={programStartTime} onChangeText={setProgramStartTime} placeholder="19:00" />
 
-              <Text style={[typography.label, { color: '#FFFFFF', marginTop: spacing.lg, marginBottom: spacing.sm }]}>
-                Konum tipi
-              </Text>
-              <View style={styles.chipRow}>
-                {INSTRUCTOR_LOCATION_CHIPS.map((loc) => (
-                  <View key={loc.id} style={{ marginRight: spacing.sm, marginBottom: spacing.sm }}>
-                    <Chip
-                      label={loc.label}
-                      selected={programLocationType === loc.id}
-                      onPress={() => setProgramLocationType(loc.id)}
-                    />
-                  </View>
-                ))}
-              </View>
-
-              {(programLocationType === 'in_person' || programLocationType === 'school') && (
+              {lessonDelivery === 'Yüz yüze' && (
                 <Input
                   label="Adres / not"
                   value={programAddress}
@@ -1053,7 +1118,7 @@ export const InstructorLessonsTab: React.FC = () => {
                         {s.address ? ` · ${s.address}` : ''}
                       </Text>
                     </View>
-                    <TouchableOpacity onPress={() => setSlotDeleteTarget(s)} hitSlop={12}>
+                    <TouchableOpacity onPress={() => promptDeleteModalSlot(s)} hitSlop={12}>
                       <Icon name="trash-can-outline" size={20} color={colors.textTertiary} />
                     </TouchableOpacity>
                   </View>
@@ -1270,16 +1335,6 @@ export const InstructorLessonsTab: React.FC = () => {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => void confirmDelete()}
       />
-
-      <ConfirmModal
-        visible={!!slotDeleteTarget}
-        title="Program satırını sil"
-        message="Bu haftalık satırı silmek istiyor musunuz?"
-        cancelLabel="Vazgeç"
-        confirmLabel="Sil"
-        onCancel={() => setSlotDeleteTarget(null)}
-        onConfirm={() => void onConfirmDeleteModalSlot()}
-      />
     </View>
   );
 };
@@ -1342,5 +1397,17 @@ const styles = StyleSheet.create({
     padding: 20,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

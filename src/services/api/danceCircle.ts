@@ -25,6 +25,7 @@ type SchoolEventSummaryRow = {
   id: string;
   title: string | null;
   starts_at: string | null;
+  event_type?: string | null;
 };
 
 export type DanceCircleVote = 'like' | 'skip';
@@ -137,6 +138,10 @@ function getAttendeeIdentity(row: EventAttendeeRow): string | null {
   return getOptionalId(row.user_id);
 }
 
+function isLessonEventType(value: string | null | undefined): boolean {
+  return (value ?? '').trim().toLowerCase() === 'lesson';
+}
+
 export const danceCircleService = {
   async listCandidates(limit = 80): Promise<DanceCircleListResult> {
     return await withAuthorizedUserRequest(async (accessToken) => {
@@ -156,7 +161,7 @@ export const danceCircleService = {
           { accessToken },
         ).catch(() => []),
       ]);
-      const latestAttendance = [
+      const combinedAttendances = [
         ...(latestAttendanceRows ?? []).map((row) => ({ event_id: row.event_id, created_at: row.created_at })),
         ...(legacyAttendanceRows ?? [])
           .map((row) => ({ event_id: row.event_id ?? '', created_at: row.created_at ?? '' }))
@@ -164,7 +169,27 @@ export const danceCircleService = {
         ...(bookingRows ?? [])
           .map((row) => ({ event_id: row.event_id ?? '', created_at: row.booked_at ?? '' }))
           .filter((row) => row.event_id && row.created_at),
-      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] ?? null;
+      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      const attendanceEventIds = [...new Set(combinedAttendances.map((row) => row.event_id).filter(Boolean))];
+      if (attendanceEventIds.length === 0) {
+        return {
+          candidates: [],
+          eventWindow: null,
+          reason: 'missing-event',
+        };
+      }
+
+      const attendedEvents = await supabaseRestRequest<SchoolEventSummaryRow[]>(
+        `/school_events?select=id,title,starts_at,event_type&id=in.(${attendanceEventIds
+          .map((id) => encodeURIComponent(id))
+          .join(',')})`,
+        { accessToken },
+      ).catch(() => []);
+      const eligibleEventIds = new Set(
+        (attendedEvents ?? []).filter((row) => !isLessonEventType(row.event_type)).map((row) => row.id),
+      );
+      const latestAttendance = combinedAttendances.find((row) => eligibleEventIds.has(row.event_id)) ?? null;
 
       if (!latestAttendance?.event_id || !latestAttendance.created_at) {
         return {
@@ -177,11 +202,7 @@ export const danceCircleService = {
       const joinedAt = latestAttendance.created_at;
       const voteDeadlineAt = new Date(new Date(joinedAt).getTime() + 24 * 60 * 60 * 1000).toISOString();
       const voteWindowOpen = Date.now() <= new Date(voteDeadlineAt).getTime();
-      const eventRows = await supabaseRestRequest<SchoolEventSummaryRow[]>(
-        `/school_events?select=id,title,starts_at&id=eq.${encodeURIComponent(latestAttendance.event_id)}&limit=1`,
-        { accessToken },
-      );
-      const latestEvent = eventRows?.[0] ?? null;
+      const latestEvent = (attendedEvents ?? []).find((row) => row.id === latestAttendance.event_id) ?? null;
       const eventWindow: DanceCircleEventWindow = {
         eventId: latestAttendance.event_id,
         eventTitle: latestEvent?.title?.trim() || 'Son katıldığın etkinlik',

@@ -106,8 +106,8 @@ export const ClassDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const infoItems = useMemo(() => {
     if (!lesson) return [];
     return [
-      { key: 'start', icon: 'calendar-outline' as const, label: 'Başlangıç', value: formatLessonStartsAt(lesson.nextOccurrenceAt) },
-      { key: 'end', icon: 'clock-outline' as const, label: 'Süre', value: buildLessonTimeLabel(lesson) },
+      { key: 'start', icon: 'calendar-outline' as const, label: 'Tarih', value: formatLessonStartsAt(lesson.nextOccurrenceAt) },
+      { key: 'end', icon: 'clock-outline' as const, label: 'Saat', value: buildLessonTimeLabel(lesson) },
       { key: 'price', icon: 'tag-outline' as const, label: 'Ücret', value: formatLessonPrice(lesson) },
       { key: 'capacity', icon: 'account-group-outline' as const, label: 'Katılımcı', value: lesson.participantLimit ? `${lesson.participantLimit} kişi` : 'Sınırsız' },
       { key: 'level', icon: 'chart-line' as const, label: 'Seviye', value: lesson.level || 'Tüm Seviyeler' },

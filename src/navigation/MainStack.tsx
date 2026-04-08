@@ -4,6 +4,7 @@ import { MainStackParamList } from '../types/navigation';
 import { MainTabs } from './MainTabs';
 import { EventDetailsScreen } from '../screens/events/EventDetailsScreen';
 import { SchoolDetailsScreen } from '../screens/schools/SchoolDetailsScreen';
+import { SchoolAdminPanelScreen } from '../screens/schools/SchoolAdminPanelScreen';
 import { ClassDetailsScreen } from '../screens/events/ClassDetailsScreen';
 import { DanceStarScreen } from '../screens/dance/DanceStarScreen';
 import { EditEventScreen } from '../screens/events/EditEventScreen';
@@ -28,6 +29,7 @@ import { ViewUserProfileScreen } from '../screens/social/ViewUserProfileScreen';
 import { FavoriteSchoolsScreen } from '../screens/social/FavoriteSchoolsScreen';
 import { FavoritesHubScreen } from '../screens/social/FavoritesHubScreen';
 import { UserPanelScreen } from '../screens/social/UserPanelScreen';
+import { LessonsScreen } from '../screens/social/LessonsScreen';
 import { InstructorOnboardingScreen } from '../screens/instructor/InstructorOnboardingScreen';
 import { InstructorsListScreen } from '../screens/explore/InstructorsListScreen';
 
@@ -39,6 +41,7 @@ export const MainStack: React.FC = () => {
       <Stack.Screen name="MainTabs" component={MainTabs} />
       <Stack.Screen name="EventDetails" component={EventDetailsScreen} />
       <Stack.Screen name="SchoolDetails" component={SchoolDetailsScreen} />
+      <Stack.Screen name="SchoolAdminPanel" component={SchoolAdminPanelScreen} />
       <Stack.Screen name="FavoriteSchools" component={FavoriteSchoolsScreen} />
       <Stack.Screen name="FavoritesHub" component={FavoritesHubScreen} />
       <Stack.Screen name="ClassDetails" component={ClassDetailsScreen} />
@@ -63,6 +66,7 @@ export const MainStack: React.FC = () => {
       <Stack.Screen name="SettingsAbout" component={SettingsAboutScreen} />
       <Stack.Screen name="UserProfile" component={ViewUserProfileScreen} />
       <Stack.Screen name="UserPanel" component={UserPanelScreen} />
+      <Stack.Screen name="Lessons" component={LessonsScreen} />
       <Stack.Screen name="InstructorsList" component={InstructorsListScreen} />
       <Stack.Screen name="InstructorOnboarding" component={InstructorOnboardingScreen} />
     </Stack.Navigator>

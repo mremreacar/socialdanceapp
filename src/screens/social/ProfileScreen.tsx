@@ -66,6 +66,7 @@ export const ProfileScreen: React.FC = () => {
   const [followingList, setFollowingList] = useState<FollowListUser[]>([]);
   const [followersList, setFollowersList] = useState<FollowListUser[]>([]);
   const [followListsLoading, setFollowListsLoading] = useState(false);
+  const [followActionBusyIds, setFollowActionBusyIds] = useState<Set<string>>(new Set());
   const [followCounts, setFollowCounts] = useState<{ following: number; followers: number }>({ following: 0, followers: 0 });
   const [refreshing, setRefreshing] = useState(false);
   const [dancedModalVisible, setDancedModalVisible] = useState(false);
@@ -211,8 +212,46 @@ export const ProfileScreen: React.FC = () => {
     })();
   };
 
+  const handleFollowDancedUser = (user: DancedWithPerson) => {
+    if (followActionBusyIds.has(user.id)) return;
+    setFollowActionBusyIds((prev) => new Set(prev).add(user.id));
+    void (async () => {
+      try {
+        await followService.followUser(user.id);
+        setUnfollowedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(user.id);
+          return next;
+        });
+        setFollowingList((prev) => (
+          prev.some((u) => u.id === user.id)
+            ? prev
+            : [
+                {
+                  id: user.id,
+                  name: user.name,
+                  handle: user.username ? `@${user.username}` : '',
+                  img: user.avatar,
+                },
+                ...prev,
+              ]
+        ));
+        setFollowCounts((c) => ({ ...c, following: c.following + 1 }));
+      } catch {
+        // İstek başarısız
+      } finally {
+        setFollowActionBusyIds((prev) => {
+          const next = new Set(prev);
+          next.delete(user.id);
+          return next;
+        });
+      }
+    })();
+  };
+
   const openDancedModal = () => {
     void loadDancedWith();
+    void loadFollowLists();
     setDancedModalVisible(true);
   };
 
@@ -287,17 +326,32 @@ export const ProfileScreen: React.FC = () => {
               showsVerticalScrollIndicator={false}
             >
               {dancedWithList.length > 0 ? (
-                dancedWithList.map((u) => (
-                  <UserListItem
-                    key={u.id}
-                    name={u.name}
-                    subtitle={u.username ? `@${u.username}` : undefined}
-                    avatar={u.avatar}
-                    onPress={() => goToDancedUserProfile(u)}
-                    nameColor="#FFFFFF"
-                    subtitleColor="#9CA3AF"
-                  />
-                ))
+                dancedWithList.map((u) => {
+                  const isEffectivelyFollowing = followingIdSet.has(u.id) && !unfollowedIds.has(u.id);
+                  const isBusy = followActionBusyIds.has(u.id);
+                  return (
+                    <UserListItem
+                      key={u.id}
+                      name={u.name}
+                      subtitle={u.username ? `@${u.username}` : undefined}
+                      avatar={u.avatar}
+                      onPress={() => goToDancedUserProfile(u)}
+                      rightLabel={isBusy ? '...' : isEffectivelyFollowing ? 'Takipten Çık' : 'Takip Et'}
+                      rightVariant="outline"
+                      onRightPress={
+                        isBusy
+                          ? undefined
+                          : isEffectivelyFollowing
+                            ? () => handleUnfollowPress(u.id, u.name)
+                            : () => handleFollowDancedUser(u)
+                      }
+                      nameColor="#FFFFFF"
+                      subtitleColor="#9CA3AF"
+                      rightButtonBorderColor="#9CA3AF"
+                      rightButtonTextColor="#9CA3AF"
+                    />
+                  );
+                })
               ) : (
                 <Text style={[typography.bodySmall, { color: '#9CA3AF', paddingVertical: spacing.xl, textAlign: 'center' }]}>
                   {hasSupabaseConfig()
