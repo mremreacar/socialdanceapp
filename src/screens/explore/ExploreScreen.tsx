@@ -78,30 +78,6 @@ type Nav = NativeStackNavigationProp<MainStackParamList>;
 
 const filters = ['Tümü', 'Bugün', 'Bu Hafta', 'Bu Ay'];
 const contentTypeFilters = ['Tümü', 'Etkinlik', 'Ders', 'Okul', 'Eğitmen'] as const;
-const feeFilters = ['Tümü', 'Ücretli', 'Ücretsiz'] as const;
-const schoolFeeById: Record<string, number> = {
-  '1': 1800,
-  '2': 2400,
-  '3': 3200,
-  '4': 2200,
-  '5': 2800,
-};
-const instructorFeeById: Record<number, number> = {
-  1: 900,
-  2: 1200,
-  3: 1500,
-  4: 1800,
-};
-
-function parsePriceValue(priceText?: string): number | null {
-  if (!priceText) return null;
-  const normalized = priceText.trim().toLowerCase();
-  if (normalized.includes('ücretsiz') || normalized.includes('free')) return 0;
-  const digits = normalized.replace(/[^\d]/g, '');
-  if (!digits) return null;
-  const value = Number(digits);
-  return Number.isFinite(value) ? value : null;
-}
 
 function toFiniteNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -144,8 +120,6 @@ export const ExploreScreen: React.FC = () => {
   const { colors, spacing, radius, typography } = useTheme();
   const [activeFilter, setActiveFilter] = useState('Tümü');
   const [activeContentType, setActiveContentType] = useState<(typeof contentTypeFilters)[number]>('Tümü');
-  const [activeFeeType, setActiveFeeType] = useState<(typeof feeFilters)[number]>('Tümü');
-  const [activePriceBandId, setActivePriceBandId] = useState<'ALL' | 'BAND_1' | 'BAND_2' | 'BAND_3'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
@@ -231,24 +205,6 @@ export const ExploreScreen: React.FC = () => {
       });
   }, [loadExploreData]);
 
-  const priceBandOptions = useMemo(() => {
-    const eventFees = events
-      .map((event) => parsePriceValue(event.price))
-      .filter((v): v is number => typeof v === 'number' && v > 0);
-    const schoolFees = Object.values(schoolFeeById);
-    const instructorFees = Object.values(instructorFeeById);
-    const maxDetectedFee = Math.max(500, ...eventFees, ...schoolFees, ...instructorFees);
-    const roundedMax = Math.ceil(maxDetectedFee / 500) * 500;
-    const band1Max = Math.max(500, Math.floor((roundedMax / 3) / 100) * 100);
-    const band2Max = Math.max(band1Max + 500, Math.floor(((roundedMax * 2) / 3) / 100) * 100);
-
-    return [
-      { id: 'BAND_1' as const, label: `₺0-${band1Max}`, min: 0, max: band1Max },
-      { id: 'BAND_2' as const, label: `₺${band1Max}-${band2Max}`, min: band1Max, max: band2Max },
-      { id: 'BAND_3' as const, label: `₺${band2Max}+`, min: band2Max, max: null as number | null },
-    ];
-  }, [events]);
-
   const filteredEvents = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -272,22 +228,10 @@ export const ExploreScreen: React.FC = () => {
         if (!event.title.toLowerCase().includes(q) && !event.location.toLowerCase().includes(q)) return false;
       }
 
-      const priceValue = parsePriceValue(event.price);
-      if (activeFeeType === 'Ücretli' && (priceValue == null || priceValue <= 0)) return false;
-      if (activeFeeType === 'Ücretsiz' && priceValue !== 0) return false;
-
-      if (activePriceBandId !== 'ALL') {
-        if (priceValue == null) return false;
-        const selectedBand = priceBandOptions.find((band) => band.id === activePriceBandId);
-        if (!selectedBand) return false;
-        if (priceValue < selectedBand.min) return false;
-        if (selectedBand.max != null && priceValue > selectedBand.max) return false;
-      }
-
       return true;
     });
     return list;
-  }, [activeFeeType, activeFilter, activePriceBandId, events, priceBandOptions, searchQuery]);
+  }, [activeFilter, events, searchQuery]);
 
   const filteredSchools = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -389,12 +333,9 @@ export const ExploreScreen: React.FC = () => {
   const showLessons = activeContentType === 'Tümü' || activeContentType === 'Ders';
   const showSchools = activeContentType === 'Tümü' || activeContentType === 'Okul';
   const showInstructors = activeContentType === 'Tümü' || activeContentType === 'Eğitmen';
-  const activePriceLineIndex = priceBandOptions.findIndex((item) => item.id === activePriceBandId);
   const activeFilterCount =
     (activeFilter !== 'Tümü' ? 1 : 0) +
-    (activeContentType !== 'Tümü' ? 1 : 0) +
-    (activeFeeType !== 'Tümü' ? 1 : 0) +
-    (activePriceBandId !== 'ALL' ? 1 : 0);
+    (activeContentType !== 'Tümü' ? 1 : 0);
 
   const openDrawer = () => {
     (navigation.getParent() as any)?.openDrawer?.();
@@ -855,101 +796,6 @@ export const ExploreScreen: React.FC = () => {
                     );
                   })}
                 </View>
-
-                <Text style={[styles.sheetSectionTitle, typography.captionBold, { color: 'rgba(255,255,255,0.85)' }]}>Ücret Türü</Text>
-                <View style={styles.chipWrap}>
-                  {feeFilters.map((f) => {
-                    const selected = activeFeeType === f;
-                    return (
-                      <TouchableOpacity
-                        key={f}
-                        onPress={() => setActiveFeeType(f)}
-                        activeOpacity={0.8}
-                        style={[
-                          styles.filterChip,
-                          {
-                            borderRadius: radius.full,
-                            borderColor: selected ? colors.primary : 'rgba(255,255,255,0.16)',
-                            backgroundColor: selected ? 'rgba(238,43,238,0.2)' : 'rgba(255,255,255,0.04)',
-                          },
-                        ]}
-                      >
-                        <Text style={[typography.captionBold, { color: selected ? '#EE2AEE' : '#FFFFFF' }]}>{f}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <Text style={[styles.sheetSectionTitle, typography.captionBold, { color: 'rgba(255,255,255,0.85)' }]}>Ücret Bant Aralığı</Text>
-                <View style={{ marginTop: 4 }}>
-                  <TouchableOpacity
-                    onPress={() => setActivePriceBandId('ALL')}
-                    activeOpacity={0.8}
-                    style={[
-                      styles.filterChip,
-                      {
-                        alignSelf: 'flex-start',
-                        borderRadius: radius.full,
-                        borderColor: activePriceBandId === 'ALL' ? colors.primary : 'rgba(255,255,255,0.16)',
-                        backgroundColor: activePriceBandId === 'ALL' ? 'rgba(238,43,238,0.2)' : 'rgba(255,255,255,0.04)',
-                        marginBottom: 12,
-                      },
-                    ]}
-                  >
-                    <Text style={[typography.captionBold, { color: activePriceBandId === 'ALL' ? '#EE2AEE' : '#FFFFFF' }]}>Tümü</Text>
-                  </TouchableOpacity>
-
-                  <View style={styles.priceLineWrap}>
-                    <View style={styles.priceLineTrack} />
-                    <View
-                      style={[
-                        styles.priceLineActive,
-                        {
-                          backgroundColor: '#EE2AEE',
-                          width:
-                            activePriceLineIndex < 0
-                              ? '0%'
-                              : `${(activePriceLineIndex / (priceBandOptions.length - 1)) * 100}%`,
-                        },
-                      ]}
-                    />
-                    <View style={styles.priceLinePointsRow}>
-                      {priceBandOptions.map((band, index) => {
-                        const selected = activePriceBandId === band.id;
-                        return (
-                          <TouchableOpacity
-                            key={band.id}
-                            onPress={() => setActivePriceBandId(band.id)}
-                            activeOpacity={0.85}
-                            style={styles.pricePointPressable}
-                          >
-                            <View
-                              style={[
-                                styles.pricePoint,
-                                {
-                                  borderColor: selected ? '#EE2AEE' : 'rgba(255,255,255,0.35)',
-                                  backgroundColor: selected ? '#EE2AEE' : '#1F1320',
-                                },
-                              ]}
-                            />
-                            <Text
-                              style={[
-                                typography.caption,
-                                styles.pricePointLabel,
-                                {
-                                  color: selected ? '#EE2AEE' : 'rgba(255,255,255,0.75)',
-                                  textAlign: index === 0 ? 'left' : index === priceBandOptions.length - 1 ? 'right' : 'center',
-                                },
-                              ]}
-                            >
-                              {band.label}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
-                </View>
               </View>
             </ScrollView>
 
@@ -958,8 +804,6 @@ export const ExploreScreen: React.FC = () => {
                 onPress={() => {
                   setActiveFilter('Tümü');
                   setActiveContentType('Tümü');
-                  setActiveFeeType('Tümü');
-                  setActivePriceBandId('ALL');
                 }}
                 activeOpacity={0.8}
                 style={[
@@ -1096,42 +940,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-  },
-  priceLineWrap: {
-    marginTop: 2,
-    paddingHorizontal: 6,
-    paddingBottom: 2,
-  },
-  priceLineTrack: {
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  priceLineActive: {
-    position: 'absolute',
-    left: 6,
-    top: 0,
-    height: 4,
-    borderRadius: 999,
-  },
-  priceLinePointsRow: {
-    marginTop: -10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  pricePointPressable: {
-    alignItems: 'center',
-    width: 84,
-  },
-  pricePoint: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-  },
-  pricePointLabel: {
-    marginTop: 8,
-    width: '100%',
   },
   sheetFooter: {
     flexDirection: 'row',

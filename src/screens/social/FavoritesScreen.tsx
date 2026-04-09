@@ -17,6 +17,7 @@ import { listAllSchoolEvents } from '../../services/api/schoolEvents';
 import { schoolEventAttendeesService } from '../../services/api/schoolEventAttendees';
 import { storage } from '../../services/storage';
 import type { MyEventCardData } from '../../components/domain/MyEventCard';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 type EventTimeFilter = 'Tümü' | 'Bugün' | 'Bu Hafta' | 'Bu Ay';
@@ -42,6 +43,7 @@ function toObject(value: unknown): Record<string, unknown> | null {
 export const MyEventsScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const { colors, spacing, typography } = useTheme();
+  const insets = useSafeAreaInsets();
   const [events, setEvents] = useState<EventListItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(() => new Set());
@@ -221,6 +223,9 @@ export const MyEventsScreen: React.FC = () => {
   }, [loadEvents]);
 
   const openDrawer = () => (navigation.getParent() as any)?.openDrawer?.();
+  const openMapView = () => {
+    (navigation.getParent() as any)?.navigate('MainTabs', { screen: 'Schools', params: { isMapView: true } });
+  };
 
   return (
     <Screen>
@@ -233,9 +238,10 @@ export const MyEventsScreen: React.FC = () => {
           onMenuPress: openDrawer,
           showNotification: true,
           onNotificationPress: () => (navigation.getParent() as any)?.navigate('Notifications'),
-          rightIcon: 'plus',
-          onRightPress: () => navigation.navigate('EditEvent'),
+          rightIcon: 'map-outline',
+          onRightPress: openMapView,
         }}
+        headerExtraHeight={34}
         headerExtra={
           <View>
             <View style={styles.searchRow}>
@@ -247,21 +253,12 @@ export const MyEventsScreen: React.FC = () => {
                   backgroundColor="#482347"
                 />
               </View>
-            </View>
-            <View style={[styles.headerFilterRow, { marginTop: 10 }]}>
-              <View>
-                <Text style={[typography.captionBold, { color: 'rgba(255,255,255,0.82)' }]}>Filtreler</Text>
-                <Text style={[typography.caption, { color: 'rgba(255,255,255,0.62)', marginTop: 2 }]}>
-                  {activeFilterCount > 0 ? `${activeFilterCount} filtre aktif` : 'Tüm etkinlikler gösteriliyor'}
-                </Text>
-              </View>
               <TouchableOpacity
                 onPress={() => setFilterSheetVisible(true)}
                 activeOpacity={0.8}
-                style={[styles.filterActionButton, { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.14)' }]}
+                style={[styles.searchFilterButton, { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.14)' }]}
               >
-                <Icon name="tune-variant" size={16} color="#FFFFFF" />
-                <Text style={[typography.captionBold, { color: '#FFFFFF', marginLeft: 6 }]}>Filtrele</Text>
+                <Icon name="tune-variant" size={20} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
           </View>
@@ -278,8 +275,8 @@ export const MyEventsScreen: React.FC = () => {
           />
         }
       >
-        <View style={{ marginTop: spacing.sm }}>
-          <View style={[styles.summaryRow, { marginBottom: spacing.sm }]}>
+        <View>
+          <View style={styles.summaryRow}>
             <Text style={[typography.label, { color: colors.textSecondary }]}>{filtered.length} Sonuç Bulundu</Text>
             {activeFilterLabels.length > 0 ? (
               <TouchableOpacity onPress={clearAllFilters} activeOpacity={0.8}>
@@ -337,6 +334,13 @@ export const MyEventsScreen: React.FC = () => {
           )}
         </View>
       </CollapsingHeaderScrollView>
+      <TouchableOpacity
+        onPress={() => navigation.navigate('EditEvent')}
+        activeOpacity={0.9}
+        style={[styles.addEventFab, { backgroundColor: colors.primary, right: spacing.lg, bottom: insets.bottom + 12 }]}
+      >
+        <Icon name="plus" size={24} color="#FFFFFF" />
+      </TouchableOpacity>
 
       <Modal visible={filterSheetVisible} transparent animationType="slide" onRequestClose={() => setFilterSheetVisible(false)}>
         <View style={styles.sheetOverlay}>
@@ -407,17 +411,29 @@ export const MyEventsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  searchRow: { marginTop: 8 },
-  headerFilterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  filterActionButton: {
-    flexDirection: 'row',
+  searchRow: { marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  searchFilterButton: {
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    width: 48,
+    height: 48,
   },
-  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  addEventFab: {
+    position: 'absolute',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.24,
+    shadowRadius: 10,
+    elevation: 7,
+  },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 4, marginBottom: 8 },
   sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   sheetBox: { maxHeight: '82%' },
   sheetHandle: { width: 44, height: 4, borderRadius: 999, alignSelf: 'center', marginBottom: 14 },

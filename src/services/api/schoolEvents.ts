@@ -345,10 +345,14 @@ export async function listSchoolEvents(
   );
 }
 
-export async function listAllSchoolEvents(limit = 100, opts?: { includeUnpublished?: boolean }): Promise<SchoolEventRow[]> {
+export async function listAllSchoolEvents(
+  limit = 100,
+  opts?: { includeUnpublished?: boolean; offset?: number },
+): Promise<SchoolEventRow[]> {
   const safeLimit = Math.min(Math.max(limit, 1), 200);
+  const safeOffset = Math.max(opts?.offset ?? 0, 0);
   return await supabaseRestRequest<SchoolEventRow[]>(
-    `/school_events?select=${baseSchoolEventSelect()}${buildPublishedEventFilter(opts?.includeUnpublished)}&order=starts_at.desc&limit=${safeLimit}`,
+    `/school_events?select=${baseSchoolEventSelect()}${buildPublishedEventFilter(opts?.includeUnpublished)}&order=starts_at.desc&limit=${safeLimit}&offset=${safeOffset}`,
     { method: 'GET' },
   );
 }

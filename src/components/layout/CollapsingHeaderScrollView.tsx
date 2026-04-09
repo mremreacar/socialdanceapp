@@ -14,6 +14,7 @@ type HeaderProps = React.ComponentProps<typeof Header>;
 interface CollapsingHeaderScrollViewProps extends Omit<ScrollViewProps, 'onScroll'> {
   headerProps: HeaderProps;
   headerExtra?: React.ReactNode;
+  headerExtraHeight?: number;
   children: React.ReactNode;
   /** Örneğin harita ekranında içeriğin başlığın arkasından başlamasını istiyorsak */
   overlayContent?: boolean;
@@ -26,6 +27,7 @@ interface CollapsingHeaderScrollViewProps extends Omit<ScrollViewProps, 'onScrol
 export const CollapsingHeaderScrollView: React.FC<CollapsingHeaderScrollViewProps> = ({
   headerProps,
   headerExtra,
+  headerExtraHeight,
   children,
   overlayContent = false,
   headerBackgroundColor,
@@ -36,7 +38,7 @@ export const CollapsingHeaderScrollView: React.FC<CollapsingHeaderScrollViewProp
 }) => {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const effectiveHeaderExtra = headerExtra ? HEADER_EXTRA_HEIGHT : 0;
+  const effectiveHeaderExtra = headerExtra ? (headerExtraHeight ?? HEADER_EXTRA_HEIGHT) : 0;
   const headerTotal = insets.top + HEADER_HEIGHT + effectiveHeaderExtra;
   const contentTop = hideHeader ? 0 : overlayContent ? 0 : headerTotal;
   const bgColor = headerBackgroundColor ?? colors.headerBg;

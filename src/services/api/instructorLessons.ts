@@ -91,6 +91,7 @@ type SchoolEventLessonRow = {
   price_amount?: number | string | null;
   participant_limit?: number | null;
   price_currency?: string | null;
+  delivery_mode?: string | null;
   location_place?: unknown;
   schedule_items?: unknown;
   created_at: string;
@@ -126,7 +127,10 @@ type EventDanceTypeLinkRow = {
 type LessonMeta = {
   lesson_level?: string | null;
   lesson_is_published?: boolean | null;
+  lesson_type?: string | null;
   lesson_format?: string | null;
+  delivery_mode?: string | null;
+  lesson_delivery_mode?: string | null;
   lesson_delivery?: string | null;
   address?: string | null;
   formatted_address?: string | null;
@@ -300,7 +304,10 @@ function extractLessonMeta(value: unknown): LessonMeta {
   return {
     lesson_level: typeof raw?.lesson_level === 'string' ? raw.lesson_level : null,
     lesson_is_published: typeof raw?.lesson_is_published === 'boolean' ? raw.lesson_is_published : null,
+    lesson_type: typeof raw?.lesson_type === 'string' ? raw.lesson_type : null,
     lesson_format: typeof raw?.lesson_format === 'string' ? raw.lesson_format : null,
+    delivery_mode: typeof raw?.delivery_mode === 'string' ? raw.delivery_mode : null,
+    lesson_delivery_mode: typeof raw?.lesson_delivery_mode === 'string' ? raw.lesson_delivery_mode : null,
     lesson_delivery: typeof raw?.lesson_delivery === 'string' ? raw.lesson_delivery : null,
     address: typeof raw?.address === 'string' ? raw.address : null,
     formatted_address: typeof raw?.formatted_address === 'string' ? raw.formatted_address : null,
@@ -364,10 +371,18 @@ function serializeScheduleItems(slots: InstructorScheduleSlotModel[]): Record<st
 function mapLesson(row: SchoolEventLessonRow, instructorUserId?: string | null): InstructorLessonModel {
   const meta = extractLessonMeta(row.location_place);
   const address = meta.formatted_address?.trim() || meta.address?.trim() || null;
+  const rawLessonType = meta.lesson_format ?? meta.lesson_type;
   const lessonFormat: InstructorLessonModel['lessonFormat'] =
-    meta.lesson_format === 'private' ? 'private' : 'group';
+    rawLessonType === 'private' || row.participant_limit === 1 ? 'private' : 'group';
+  const rawDeliveryMode = row.delivery_mode ?? meta.delivery_mode ?? meta.lesson_delivery_mode ?? meta.lesson_delivery;
   const lessonDelivery: InstructorLessonModel['lessonDelivery'] =
-    meta.lesson_delivery === 'online' ? 'online' : 'in_person';
+    rawDeliveryMode === 'online'
+      ? 'online'
+      : rawDeliveryMode === 'in_person'
+        ? 'in_person'
+        : !row.school_id && !row.location?.trim() && !address
+          ? 'online'
+          : 'in_person';
   return {
     id: row.id,
     instructorUserId: instructorUserId?.trim() || row.created_by?.trim() || '',
@@ -543,7 +558,7 @@ function hydratePublishedLesson(
     schoolDistrict: school?.district?.trim() || null,
     nextOccurrenceAt: lesson.startsAt ?? nextOccurrenceFromSlots(schedule),
     scheduleSummary: scheduleSummaryFromSlots(schedule),
-    deliveryMode: lesson.lessonDelivery === 'online' ? 'online' : deliveryModeFromSlots(schedule),
+    deliveryMode: lesson.lessonDelivery === 'online' ? 'online' : 'yuz_yuze',
   };
 }
 
@@ -572,7 +587,9 @@ function buildLessonLocationPlace(input: {
   const next: Record<string, unknown> = {
     ...base,
     lesson_level: input.level.trim() || 'Tüm Seviyeler',
+    lesson_type: input.lessonFormat === 'private' ? 'private' : 'group',
     lesson_format: input.lessonFormat === 'private' ? 'private' : 'group',
+    lesson_delivery_mode: input.lessonDelivery === 'online' ? 'online' : 'in_person',
     lesson_delivery: input.lessonDelivery === 'online' ? 'online' : 'in_person',
     lesson_is_published: input.isPublished,
   };

@@ -1,8 +1,9 @@
 import React, { startTransition, useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions, Text, FlatList, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
 import MapView, { Marker } from 'react-native-maps';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
@@ -11,14 +12,16 @@ import { SchoolCardSkeleton } from '../../components/domain/SchoolCardSkeleton';
 import { SearchBar } from '../../components/domain/SearchBar';
 import { Header } from '../../components/layout/Header';
 import { Icon } from '../../components/ui/Icon';
-import { MainStackParamList } from '../../types/navigation';
-import { School } from '../../types/models';
+import { MainStackParamList, MainTabsParamList } from '../../types/navigation';
+import { Event, School } from '../../types/models';
 import { LoadingSpinner } from '../../components/feedback/LoadingSpinner';
 import { EmptyState } from '../../components/feedback/EmptyState';
 import { useLocation, getDistanceKm } from '../../hooks/useLocation';
 import { listSchools } from '../../services/api/schools';
+import { listAllSchoolEvents } from '../../services/api/schoolEvents';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
+type SchoolsRoute = RouteProp<MainTabsParamList, 'Schools'>;
 
 const ISTANBUL_REGION = {
   latitude: 41.0082,
@@ -105,16 +108,39 @@ const extractCoordinatesFromGoogleMapsUrl = (
   return { latitude: undefined, longitude: undefined };
 };
 
+const toCoordinate = (value: unknown): number | undefined => {
+  const parsed = parseCoordinate(value);
+  return parsed == null ? undefined : parsed;
+};
+
+const toRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+
+const extractCoordinatesFromLocationPlace = (locationPlace: unknown): { latitude?: number; longitude?: number } => {
+  const place = toRecord(locationPlace);
+  if (!place) return {};
+
+  const latitude = toCoordinate(place.latitude) ?? toCoordinate(place.lat) ?? toCoordinate(place.y);
+  const longitude =
+    toCoordinate(place.longitude) ?? toCoordinate(place.lng) ?? toCoordinate(place.lon) ?? toCoordinate(place.x);
+
+  return { latitude, longitude };
+};
+
 export const SchoolsScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<SchoolsRoute>();
   const { colors, spacing } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView | null>(null);
   const { coords, error: locationError } = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'map'>(route.params?.isMapView ? 'map' : 'list');
   const [schools, setSchools] = useState<School[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [mapSchools, setMapSchools] = useState<School[]>([]);
+  const [mapEvents, setMapEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -126,6 +152,12 @@ export const SchoolsScreen: React.FC = () => {
 
   const isMapView = viewMode === 'map';
   const mapHeight = windowHeight;
+
+  useEffect(() => {
+    if (route.params?.isMapView) {
+      setViewMode('map');
+    }
+  }, [route.params?.isMapView]);
 
   useEffect(() => {
     navigation.setParams({ isMapView } as any);
@@ -151,10 +183,8 @@ export const SchoolsScreen: React.FC = () => {
       const image = r.image_url?.trim() || '';
       const rating = typeof r.rating === 'number' && Number.isFinite(r.rating) ? r.rating : 0;
       const ratingCount = typeof r.review_count === 'number' && Number.isFinite(r.review_count) ? r.review_count : 0;
-      const isOpen =
-        (r.current_status || '').toLowerCase().includes('açık') ||
-        (r.current_status || '').toLowerCase().includes('open') ||
-        (r.current_status || '').toLowerCase().includes('24');
+      const statusText = typeof r.current_status === 'string' ? r.current_status.trim() : '';
+      const isOpen = statusText === 'Acik' ? true : statusText === 'Kapali' ? false : undefined;
 
       const normalizedCoordinates = normalizeSchoolCoordinates(r.latitude, r.longitude);
       const fallbackCoordinates = extractCoordinatesFromGoogleMapsUrl(r.google_maps_url);
@@ -177,7 +207,7 @@ export const SchoolsScreen: React.FC = () => {
         image,
         rating,
         ratingCount,
-        isOpen: r.current_status ? isOpen : undefined,
+        isOpen,
         tags: r.category ? [r.category] : undefined,
         phone: r.telephone || undefined,
         website: r.website || undefined,
@@ -214,11 +244,124 @@ export const SchoolsScreen: React.FC = () => {
     pageRef.current = 0;
     qRef.current = searchQuery;
 
-    const rows = await listSchools({ q: searchQuery, limit: PAGE_SIZE, offset: 0 });
+    const [rows, eventRows] = await Promise.all([
+      listSchools({ q: searchQuery, limit: PAGE_SIZE, offset: 0 }),
+      listAllSchoolEvents(200).catch(() => []),
+    ]);
+    const schoolCoordinateById = new Map(
+      rows.map((row) => [
+        row.id,
+        {
+          latitude: toCoordinate(row.latitude),
+          longitude: toCoordinate(row.longitude),
+        },
+      ]),
+    );
     setSchools(mapRowsToSchools(rows));
+    setEvents(
+      eventRows
+        .filter((row) => (row.event_type ?? '').trim().toLowerCase() !== 'lesson')
+        .map<Event | null>((row) => {
+          const startsAt = new Date(row.starts_at);
+          if (Number.isNaN(startsAt.getTime())) return null;
+          const ownCoordinates = extractCoordinatesFromLocationPlace(row.location_place);
+          const schoolCoordinates = row.school_id ? schoolCoordinateById.get(row.school_id) : undefined;
+          const latitude = ownCoordinates.latitude ?? schoolCoordinates?.latitude;
+          const longitude = ownCoordinates.longitude ?? schoolCoordinates?.longitude;
+          if (latitude == null || longitude == null) return null;
+          return {
+            id: row.id,
+            title: row.title?.trim() || 'Etkinlik',
+            date: startsAt.toLocaleString('tr-TR', {
+              weekday: 'long',
+              day: '2-digit',
+              month: 'long',
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            time: startsAt.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+            location: row.location?.trim() || 'Konum yakında açıklanacak',
+            image: row.image_url?.trim() || '',
+            description: row.description?.trim() || '',
+            rawDate: startsAt,
+            latitude,
+            longitude,
+            type: row.event_type?.trim() || undefined,
+          };
+        })
+        .filter((item): item is Event => item !== null),
+    );
     setHasMore(rows.length === PAGE_SIZE);
     if (!opts?.silent) setLoading(false);
   }, [PAGE_SIZE, mapRowsToSchools, searchQuery]);
+
+  const fetchAllMapData = useCallback(async () => {
+    const SCHOOL_BATCH_SIZE = 1000;
+    const EVENT_BATCH_SIZE = 200;
+
+    const allSchoolRows: any[] = [];
+    let schoolOffset = 0;
+    while (true) {
+      const batch = await listSchools({ limit: SCHOOL_BATCH_SIZE, offset: schoolOffset });
+      allSchoolRows.push(...batch);
+      if (batch.length < SCHOOL_BATCH_SIZE) break;
+      schoolOffset += SCHOOL_BATCH_SIZE;
+    }
+
+    const schoolCoordinateById = new Map(
+      allSchoolRows.map((row) => [
+        row.id,
+        {
+          latitude: toCoordinate(row.latitude),
+          longitude: toCoordinate(row.longitude),
+        },
+      ]),
+    );
+
+    const allEventRows: any[] = [];
+    let eventOffset = 0;
+    while (true) {
+      const batch = await listAllSchoolEvents(EVENT_BATCH_SIZE, { offset: eventOffset }).catch(() => []);
+      allEventRows.push(...batch);
+      if (batch.length < EVENT_BATCH_SIZE) break;
+      eventOffset += EVENT_BATCH_SIZE;
+    }
+
+    setMapSchools(mapRowsToSchools(allSchoolRows));
+    setMapEvents(
+      allEventRows
+        .filter((row) => (row.event_type ?? '').trim().toLowerCase() !== 'lesson')
+        .map<Event | null>((row) => {
+          const startsAt = new Date(row.starts_at);
+          if (Number.isNaN(startsAt.getTime())) return null;
+          const ownCoordinates = extractCoordinatesFromLocationPlace(row.location_place);
+          const schoolCoordinates = row.school_id ? schoolCoordinateById.get(row.school_id) : undefined;
+          const latitude = ownCoordinates.latitude ?? schoolCoordinates?.latitude;
+          const longitude = ownCoordinates.longitude ?? schoolCoordinates?.longitude;
+          if (latitude == null || longitude == null) return null;
+          return {
+            id: row.id,
+            title: row.title?.trim() || 'Etkinlik',
+            date: startsAt.toLocaleString('tr-TR', {
+              weekday: 'long',
+              day: '2-digit',
+              month: 'long',
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            time: startsAt.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+            location: row.location?.trim() || 'Konum yakında açıklanacak',
+            image: row.image_url?.trim() || '',
+            description: row.description?.trim() || '',
+            rawDate: startsAt,
+            latitude,
+            longitude,
+            type: row.event_type?.trim() || undefined,
+          };
+        })
+        .filter((item): item is Event => item !== null),
+    );
+  }, [mapRowsToSchools]);
 
   useEffect(() => {
     let cancelled = false;
@@ -251,6 +394,21 @@ export const SchoolsScreen: React.FC = () => {
     }, [fetchFirstPage]),
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!isMapView) return;
+
+    void fetchAllMapData().catch(() => {
+      if (cancelled) return;
+      setMapSchools([]);
+      setMapEvents([]);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchAllMapData, isMapView]);
+
   const onRefresh = useCallback(async () => {
     if (refreshing) return;
     setRefreshing(true);
@@ -265,8 +423,13 @@ export const SchoolsScreen: React.FC = () => {
 
   const refreshMapData = useCallback(async () => {
     if (refreshing) return;
-    await onRefresh();
-  }, [onRefresh, refreshing]);
+    setRefreshing(true);
+    try {
+      await fetchAllMapData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchAllMapData, refreshing]);
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !hasMore) return;
@@ -291,14 +454,24 @@ export const SchoolsScreen: React.FC = () => {
   }, [PAGE_SIZE, hasMore, loading, loadingMore, mapRowsToSchools]);
 
   const filtered = schools;
+  const visibleSchools = isMapView ? mapSchools : schools;
+  const visibleEvents = isMapView ? mapEvents : events;
 
-  const markerCoords = useMemo(
+  const schoolMarkerCoords = useMemo(
     () =>
-      filtered
+      visibleSchools
         .filter((s) => s.latitude != null && s.longitude != null)
         .map((s) => ({ latitude: s.latitude as number, longitude: s.longitude as number })),
-    [filtered],
+    [visibleSchools],
   );
+  const eventMarkerCoords = useMemo(
+    () =>
+      visibleEvents
+        .filter((event) => event.latitude != null && event.longitude != null)
+        .map((event) => ({ latitude: event.latitude as number, longitude: event.longitude as number })),
+    [visibleEvents],
+  );
+  const markerCoords = useMemo(() => [...schoolMarkerCoords, ...eventMarkerCoords], [eventMarkerCoords, schoolMarkerCoords]);
 
   const focusUser = () => {
     if (!coords || !mapRef.current) return;
@@ -450,14 +623,27 @@ export const SchoolsScreen: React.FC = () => {
             showsMyLocationButton={false}
             followsUserLocation={false}
           >
-            {filtered.map((school) =>
+            {visibleSchools.map((school) =>
               school.latitude != null && school.longitude != null ? (
                 <Marker
                   key={school.id}
                   coordinate={{ latitude: school.latitude, longitude: school.longitude }}
                   title={school.name}
                   description={school.location}
+                  pinColor="#7CDAFF"
                   onCalloutPress={() => navigation.navigate('SchoolDetails', { id: school.id })}
+                />
+              ) : null,
+            )}
+            {visibleEvents.map((event) =>
+              event.latitude != null && event.longitude != null ? (
+                <Marker
+                  key={`event:${event.id}`}
+                  coordinate={{ latitude: event.latitude, longitude: event.longitude }}
+                  title={event.title}
+                  description={event.date}
+                  pinColor="#EE2AEE"
+                  onCalloutPress={() => navigation.navigate('EventDetails', { id: event.id })}
                 />
               ) : null,
             )}
@@ -467,11 +653,24 @@ export const SchoolsScreen: React.FC = () => {
 
       {isMapView && (
         <View pointerEvents="box-none" style={styles.mapOverlayControls}>
+          <View
+            pointerEvents="none"
+            style={[styles.mapLegend, { top: insets.top + 8, left: spacing.lg, backgroundColor: 'rgba(0,0,0,0.65)', borderColor: 'rgba(255,255,255,0.16)' }]}
+          >
+            <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: '#7CDAFF' }]} />
+              <Text style={styles.legendText}>Okul</Text>
+            </View>
+            <View style={[styles.legendRow, { marginLeft: 14 }]}>
+              <View style={[styles.legendDot, { backgroundColor: '#EE2AEE' }]} />
+              <Text style={styles.legendText}>Etkinlik</Text>
+            </View>
+          </View>
           <TouchableOpacity
             activeOpacity={0.9}
             onPress={() => startTransition(() => setViewMode('list'))}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            style={[styles.listFab, { top: insets.top + 8, left: spacing.lg }]}
+            style={[styles.listFab, { top: insets.top + 52, left: spacing.lg }]}
           >
             <Icon name="chevron-left" size={24} color="#FFFFFF" />
           </TouchableOpacity>
@@ -565,6 +764,31 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  mapLegend: {
+    position: 'absolute',
+    zIndex: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legendText: {
+    marginLeft: 6,
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   locateFab: {
     position: 'absolute',

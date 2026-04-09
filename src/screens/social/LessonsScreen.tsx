@@ -107,7 +107,7 @@ export const LessonsScreen: React.FC = () => {
           [lesson.schoolDistrict?.trim(), lesson.schoolCity?.trim()].filter(Boolean).join(', '),
         ].filter(Boolean);
         const location = locationParts.join(' · ') || `${lesson.instructorName} · ${formatLessonPrice(lesson)} · ${lesson.level}`;
-        const lessonType: LessonListItem['lessonType'] = lesson.participantLimit === 1 ? 'Özel ders' : 'Grup dersi';
+        const lessonType: LessonListItem['lessonType'] = lesson.lessonFormat === 'private' ? 'Özel ders' : 'Grup dersi';
         const deliveryMode: LessonListItem['deliveryMode'] = lesson.deliveryMode === 'online' ? 'Online' : 'Yüz yüze';
         return {
           id: `lesson:${lesson.id}`,
@@ -268,9 +268,16 @@ export const LessonsScreen: React.FC = () => {
         headerExtra={
           <View>
             <View style={styles.searchRow}>
-              <View style={{ flex: 1 }}>
+              <View style={styles.searchInputWrap}>
                 <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Ders, eğitmen veya şehir ara" backgroundColor="#482347" />
               </View>
+              <TouchableOpacity
+                onPress={() => setFilterSheetVisible(true)}
+                activeOpacity={0.8}
+                style={[styles.filterActionButton, { backgroundColor: '#311831', borderColor: 'rgba(255,255,255,0.14)' }]}
+              >
+                <Icon name="tune-variant" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
             </View>
             <View style={[styles.headerFilterRow, { marginTop: 10 }]}>
               <View>
@@ -279,14 +286,6 @@ export const LessonsScreen: React.FC = () => {
                   {activeFilterCount > 0 ? `${activeFilterCount} filtre aktif` : 'Tüm dersler gösteriliyor'}
                 </Text>
               </View>
-              <TouchableOpacity
-                onPress={() => setFilterSheetVisible(true)}
-                activeOpacity={0.8}
-                style={[styles.filterActionButton, { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.14)' }]}
-              >
-                <Icon name="tune-variant" size={16} color="#FFFFFF" />
-                <Text style={[typography.captionBold, { color: '#FFFFFF', marginLeft: 6 }]}>Filtrele</Text>
-              </TouchableOpacity>
             </View>
           </View>
         }
@@ -302,7 +301,7 @@ export const LessonsScreen: React.FC = () => {
           />
         }
       >
-        <View style={{ marginTop: spacing.sm }}>
+        <View style={{ marginTop: spacing.xs }}>
           <View style={[styles.summaryRow, { marginBottom: spacing.sm }]}>
             <Text style={[typography.label, { color: colors.textSecondary }]}>{filtered.length} Sonuç Bulundu</Text>
             {activeFilterLabels.length > 0 ? (
@@ -469,15 +468,16 @@ export const LessonsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  searchRow: { marginTop: 8 },
-  headerFilterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  searchRow: { marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  searchInputWrap: { flex: 1 },
+  headerFilterRow: { alignItems: 'flex-start', justifyContent: 'space-between' },
   filterActionButton: {
-    flexDirection: 'row',
+    width: 48,
+    height: 48,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
   },
   summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },

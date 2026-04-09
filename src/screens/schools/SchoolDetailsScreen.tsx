@@ -164,10 +164,7 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       const image = row.image_url?.trim() || '';
       const description = (row as any).snippet ? String((row as any).snippet).trim() : '';
       const statusText = row.current_status ? String(row.current_status).trim() : '';
-      const isOpen =
-        statusText.toLowerCase().includes('açık') ||
-        statusText.toLowerCase().includes('open') ||
-        statusText.toLowerCase().includes('24');
+      const isOpen = statusText === 'Acik' ? true : statusText === 'Kapali' ? false : undefined;
 
       const schoolEvents =
         eventRows.length > 0
@@ -199,7 +196,7 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         description,
         phone: row.telephone || undefined,
         website: row.website || undefined,
-        isOpen: statusText ? isOpen : undefined,
+        isOpen,
         statusLabel: statusText || undefined,
         classes: schoolClasses,
         events: schoolEvents,

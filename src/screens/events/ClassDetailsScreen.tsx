@@ -108,6 +108,18 @@ export const ClassDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     return [
       { key: 'start', icon: 'calendar-outline' as const, label: 'Tarih', value: formatLessonStartsAt(lesson.nextOccurrenceAt) },
       { key: 'end', icon: 'clock-outline' as const, label: 'Saat', value: buildLessonTimeLabel(lesson) },
+      {
+        key: 'delivery',
+        icon: 'video-outline' as const,
+        label: 'Ders formatı',
+        value: lesson.deliveryMode === 'online' ? 'Online' : 'Yüz yüze',
+      },
+      {
+        key: 'format',
+        icon: 'school-outline' as const,
+        label: 'Ders tipi',
+        value: lesson.lessonFormat === 'private' ? 'Özel ders' : 'Grup dersi',
+      },
       { key: 'price', icon: 'tag-outline' as const, label: 'Ücret', value: formatLessonPrice(lesson) },
       { key: 'capacity', icon: 'account-group-outline' as const, label: 'Katılımcı', value: lesson.participantLimit ? `${lesson.participantLimit} kişi` : 'Sınırsız' },
       { key: 'level', icon: 'chart-line' as const, label: 'Seviye', value: lesson.level || 'Tüm Seviyeler' },
