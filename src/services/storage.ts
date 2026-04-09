@@ -12,6 +12,8 @@ export interface StoredProfile {
   notificationsEnabled?: boolean;
 }
 
+export type AuthProvider = 'supabase' | 'apple-native';
+
 export const DEFAULT_PROFILE: StoredProfile = {
   displayName: '',
   username: '',
@@ -34,6 +36,8 @@ const KEYS = {
   DANCED_COUNT: '@socialdance/danced_count',
   THEME_MODE: '@socialdance/theme_mode',
   PROFILE: '@socialdance/profile',
+  AUTH_PROVIDER: '@socialdance/auth_provider',
+  APPLE_USER_ID: '@socialdance/apple_user_id',
 } as const;
 
 export const storage = {
@@ -93,6 +97,32 @@ export const storage = {
     await this.removeItem(KEYS.REFRESH_TOKEN);
   },
 
+  async getAuthProvider(): Promise<AuthProvider | null> {
+    const value = await this.getItem<AuthProvider>(KEYS.AUTH_PROVIDER);
+    return value === 'supabase' || value === 'apple-native' ? value : null;
+  },
+
+  async setAuthProvider(provider: AuthProvider): Promise<void> {
+    await this.setItem(KEYS.AUTH_PROVIDER, provider);
+  },
+
+  async clearAuthProvider(): Promise<void> {
+    await this.removeItem(KEYS.AUTH_PROVIDER);
+  },
+
+  async getAppleUserId(): Promise<string | null> {
+    const value = await this.getItem<string>(KEYS.APPLE_USER_ID);
+    return typeof value === 'string' && value.length ? value : null;
+  },
+
+  async setAppleUserId(value: string): Promise<void> {
+    await this.setItem(KEYS.APPLE_USER_ID, value);
+  },
+
+  async clearAppleUserId(): Promise<void> {
+    await this.removeItem(KEYS.APPLE_USER_ID);
+  },
+
   async getFavorites(): Promise<string[]> {
     const v = await this.getItem<string[]>(KEYS.USER_FAVORITES);
     return v || [];
@@ -147,6 +177,8 @@ export const storage = {
       this.setLoggedIn(false),
       this.clearAccessToken(),
       this.clearRefreshToken(),
+      this.clearAuthProvider(),
+      this.clearAppleUserId(),
       this.clearProfile(),
     ]);
   },

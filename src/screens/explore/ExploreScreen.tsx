@@ -26,6 +26,36 @@ import {
 } from '../../services/api/instructorLessons';
 import { listSchools, type SchoolRow } from '../../services/api/schools';
 
+function toCoordinate(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value.trim().replace(',', '.'));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function extractCoordinatesFromLocationPlace(locationPlace: unknown): { latitude?: number; longitude?: number } {
+  const place = toRecord(locationPlace);
+  if (!place) return {};
+
+  const latitude =
+    toCoordinate(place.latitude) ??
+    toCoordinate(place.lat) ??
+    toCoordinate(place.y);
+  const longitude =
+    toCoordinate(place.longitude) ??
+    toCoordinate(place.lng) ??
+    toCoordinate(place.lon) ??
+    toCoordinate(place.x);
+
+  return { latitude, longitude };
+}
+
 function schoolRowToExploreSchool(row: SchoolRow): School {
   const lat = row.latitude != null && Number.isFinite(Number(row.latitude)) ? Number(row.latitude) : undefined;
   const lng = row.longitude != null && Number.isFinite(Number(row.longitude)) ? Number(row.longitude) : undefined;
@@ -141,10 +171,21 @@ export const ExploreScreen: React.FC = () => {
       instructorProfileService.listVisibleForExplore(),
       schoolPromise,
     ]);
+    const schoolCoordinateById = new Map(
+      schoolRows.map((row) => [
+        row.id,
+        {
+          latitude: toCoordinate(row.latitude),
+          longitude: toCoordinate(row.longitude),
+        },
+      ]),
+    );
     const mapped = rows
       .map<Event | null>((row) => {
         const startsAt = new Date(row.starts_at);
         if (Number.isNaN(startsAt.getTime())) return null;
+        const ownCoordinates = extractCoordinatesFromLocationPlace(row.location_place);
+        const schoolCoordinates = row.school_id ? schoolCoordinateById.get(row.school_id) : undefined;
         return {
           id: row.id,
           title: row.title?.trim() || 'Etkinlik',
@@ -155,6 +196,9 @@ export const ExploreScreen: React.FC = () => {
           description: row.description?.trim() || '',
           rawDate: startsAt,
           price: formatEventPriceLabel(row.price_amount, row.price_currency),
+          latitude: ownCoordinates.latitude ?? schoolCoordinates?.latitude,
+          longitude: ownCoordinates.longitude ?? schoolCoordinates?.longitude,
+          type: row.event_type?.trim() || undefined,
         } satisfies Event;
       })
       .filter((item): item is Event => item !== null);
@@ -319,11 +363,17 @@ export const ExploreScreen: React.FC = () => {
       );
     });
   }, [instructorRowsForUi, searchQuery]);
-  const featuredSchools = useMemo(() => {
-    return [...filteredSchools]
-      .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+  const featuredEvents = useMemo(() => {
+    if (!userCoords) return [] as Event[];
+    return [...filteredEvents]
+      .filter((event) => event.latitude != null && event.longitude != null && event.type !== 'lesson')
+      .sort((a, b) => {
+        const distA = getDistanceKm(userCoords.latitude, userCoords.longitude, a.latitude ?? 0, a.longitude ?? 0);
+        const distB = getDistanceKm(userCoords.latitude, userCoords.longitude, b.latitude ?? 0, b.longitude ?? 0);
+        return distA - distB;
+      })
       .slice(0, 5);
-  }, [filteredSchools]);
+  }, [filteredEvents, userCoords]);
   const previewEvents = useMemo(() => filteredEvents.slice(0, 5), [filteredEvents]);
   const hasMoreEvents = filteredEvents.length > 5;
   const previewLessons = useMemo(() => filteredLessons.slice(0, 5), [filteredLessons]);
@@ -331,7 +381,6 @@ export const ExploreScreen: React.FC = () => {
   const previewSchools = useMemo(() => filteredSchools.slice(0, 5), [filteredSchools]);
   const hasMoreSchools = filteredSchools.length > 5;
   const previewInstructors = useMemo(() => filteredInstructors.slice(0, 5), [filteredInstructors]);
-  const hasMoreInstructors = filteredInstructors.length > 5;
   const isSearching = searchFocused || searchQuery.trim().length > 0;
   const hasAnySearchResult =
     previewEvents.length > 0 || previewLessons.length > 0 || filteredSchools.length > 0 || filteredInstructors.length > 0;
@@ -417,33 +466,40 @@ export const ExploreScreen: React.FC = () => {
         }
       >
         <View style={{ marginTop: -44 }}>
-        {showSchools && !isSearching && featuredSchools.length > 0 ? (
+        {showEvents && !isSearching && featuredEvents.length > 0 ? (
           <>
             <View style={[styles.sectionHeader, { marginBottom: spacing.sm }]}>
               <View style={styles.sectionTitleRow}>
-                <Icon name="star-outline" size={16} color={colors.primary} />
-                <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: 6 }]}>Öne Çıkan Okullar</Text>
+                <Icon name="map-marker-radius-outline" size={16} color={colors.primary} />
+                <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: 6 }]}>Öne Çıkan Etkinlikler</Text>
               </View>
-              <TouchableOpacity onPress={openSchoolsPage} activeOpacity={0.8} style={styles.viewAllButton}>
+              <TouchableOpacity onPress={openAllEventsPage} activeOpacity={0.8} style={styles.viewAllButton}>
                 <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>Tümünü Gör</Text>
               </TouchableOpacity>
             </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.featuredSchoolsRow}
+              contentContainerStyle={styles.featuredEventsRow}
               style={{ marginBottom: spacing.lg }}
             >
-              {featuredSchools.map((school) => (
-                <View key={school.id} style={styles.featuredSchoolCardWrap}>
-                  <SchoolCard
-                    school={school as School}
-                    onPress={() => navigation.navigate('SchoolDetails', { id: school.id })}
-                    variant="featured"
-                    cardBackgroundColor="#341A32"
-                  />
-                </View>
-              ))}
+              {featuredEvents.map((event) => {
+                const distanceKm = getDistanceKm(userCoords!.latitude, userCoords!.longitude, event.latitude!, event.longitude!);
+                const displayEvent: Event = {
+                  ...event,
+                  location: `${event.location} • ${distanceKm} km`,
+                };
+                return (
+                  <View key={event.id} style={styles.featuredEventCardWrap}>
+                    <EventCard
+                      event={displayEvent}
+                      onPress={() => navigation.navigate('EventDetails', { id: event.id })}
+                      variant="compact"
+                      cardBackgroundColor="#341A32"
+                    />
+                  </View>
+                );
+              })}
             </ScrollView>
           </>
         ) : null}
@@ -634,15 +690,13 @@ export const ExploreScreen: React.FC = () => {
                   <View style={[styles.countPill, { backgroundColor: 'rgba(238,43,238,0.16)' }]}>
                     <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>{filteredInstructors.length}</Text>
                   </View>
-                  {hasMoreInstructors ? (
-                    <TouchableOpacity
-                      onPress={() => navigation.navigate('InstructorsList')}
-                      activeOpacity={0.8}
-                      style={styles.viewAllButton}
-                    >
-                      <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>Tümünü Gör</Text>
-                    </TouchableOpacity>
-                  ) : null}
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate('InstructorsList')}
+                    activeOpacity={0.8}
+                    style={styles.viewAllButton}
+                  >
+                    <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>Tümünü Gör</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             ) : null}
@@ -978,11 +1032,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 2,
   },
-  featuredSchoolsRow: {
+  featuredEventsRow: {
     paddingRight: 2,
   },
-  featuredSchoolCardWrap: {
-    width: 260,
+  featuredEventCardWrap: {
+    width: 296,
     marginRight: 12,
   },
   itemBadgeWrap: {

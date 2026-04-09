@@ -153,7 +153,7 @@ export const SchoolCard: React.FC<SchoolCardProps> = ({ school, onPress, variant
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={() => { if (school.phone) Linking.openURL(`tel:${school.phone}`); }}
-        style={[styles.phoneIconBtn, { borderColor: '#3D2A3D', borderRadius: 100, position: 'absolute', right: spacing.md, top: 160 + spacing.md }]}
+        style={[styles.phoneIconBtn, { borderColor: '#3D2A3D', borderRadius: 100, position: 'absolute', right: spacing.md, top: 132 + spacing.md }]}
       >
         <Icon name="phone-outline" size={20} color="#F02AF0" />
       </TouchableOpacity>
@@ -184,12 +184,12 @@ const styles = StyleSheet.create({
   },
   imageWrapper: {
     width: '100%',
-    height: 160,
+    height: 132,
     backgroundColor: '#2A1630',
   },
   image: {
     width: '100%',
-    height: 160,
+    height: 132,
   },
   row: {
     flexDirection: 'row',

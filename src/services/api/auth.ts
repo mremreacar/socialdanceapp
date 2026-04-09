@@ -1,6 +1,8 @@
 import { supabaseAuthRequest } from './apiClient';
 import type { LoginRequestDto, LoginResponseDto, SignUpRequestDto, SignUpResponseDto, UserDto } from './types';
-import { storage } from '../storage';
+import { storage, type StoredProfile } from '../storage';
+import * as WebBrowser from 'expo-web-browser';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 type SupabaseAuthUser = {
   id: string;
@@ -13,6 +15,9 @@ type SupabaseAuthResponse = {
   refresh_token?: string;
   user?: SupabaseAuthUser | null;
 };
+
+const GOOGLE_OAUTH_REDIRECT_URL = 'socialdanceapp://auth/callback';
+type OAuthProvider = 'google';
 
 function mapSupabaseUser(user?: SupabaseAuthUser | null): UserDto | undefined {
   if (!user?.id) return undefined;
@@ -41,6 +46,8 @@ async function persistSession(session: { accessToken?: string; refreshToken?: st
   await Promise.all([
     storage.setAccessToken(session.accessToken),
     storage.setRefreshToken(session.refreshToken),
+    storage.setAuthProvider('supabase'),
+    storage.clearAppleUserId(),
     storage.setLoggedIn(true),
   ]);
 }
@@ -73,6 +80,100 @@ function normalizeForgotPasswordErrorMessage(message: string): string {
   }
 
   return message;
+}
+
+function parseUrlEncodedParams(value: string): URLSearchParams {
+  const normalized = value.startsWith('#') || value.startsWith('?') ? value.slice(1) : value;
+  return new URLSearchParams(normalized);
+}
+
+function getOAuthCallbackParams(callbackUrl: string): URLSearchParams {
+  const hashIndex = callbackUrl.indexOf('#');
+  if (hashIndex >= 0 && hashIndex < callbackUrl.length - 1) {
+    return parseUrlEncodedParams(callbackUrl.slice(hashIndex + 1));
+  }
+
+  const queryIndex = callbackUrl.indexOf('?');
+  if (queryIndex >= 0 && queryIndex < callbackUrl.length - 1) {
+    return parseUrlEncodedParams(callbackUrl.slice(queryIndex + 1));
+  }
+
+  return new URLSearchParams();
+}
+
+function readOAuthErrorMessage(params: URLSearchParams): string | null {
+  const description = params.get('error_description');
+  if (description) return description.replace(/\+/g, ' ');
+  return params.get('error');
+}
+
+function normalizeOAuthErrorMessage(message: string): string {
+  const normalized = message.trim().toLowerCase();
+  if (normalized.includes('access_denied')) {
+    return 'Sosyal giriş iptal edildi. Devam etmek için tekrar deneyiniz.';
+  }
+  if (normalized.includes('provider is not enabled')) {
+    return 'Bu sosyal giriş yöntemi henüz Supabase projesinde etkinleştirilmemiş.';
+  }
+
+  return message;
+}
+
+async function loginWithOAuthProvider(provider: OAuthProvider): Promise<void> {
+  const supabaseUrl = (process.env.EXPO_PUBLIC_SUPABASE_URL || '').trim().replace(/\/+$/, '');
+  const publishableKey = (process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '').trim();
+
+  if (!supabaseUrl || !publishableKey) {
+    throw new Error('Supabase ayarlari eksik. Sosyal giriş başlatılamadı.');
+  }
+
+  const authorizeUrl = `${supabaseUrl}/auth/v1/authorize?provider=${provider}&redirect_to=${encodeURIComponent(GOOGLE_OAUTH_REDIRECT_URL)}`;
+
+  const result = await WebBrowser.openAuthSessionAsync(authorizeUrl, GOOGLE_OAUTH_REDIRECT_URL, {
+    showInRecents: true,
+  });
+
+  if (result.type === 'cancel' || result.type === 'dismiss') {
+    throw new Error('Sosyal giriş iptal edildi.');
+  }
+
+  if (result.type !== 'success' || !result.url) {
+    throw new Error('Sosyal giriş tamamlanamadı.');
+  }
+
+  const params = getOAuthCallbackParams(result.url);
+  const providerError = readOAuthErrorMessage(params);
+  if (providerError) {
+    throw new Error(providerError);
+  }
+
+  const accessToken = params.get('access_token');
+  const refreshToken = params.get('refresh_token');
+
+  if (!accessToken || !refreshToken) {
+    throw new Error('Sosyal giriş tamamlandı ancak token bilgisi alınamadı.');
+  }
+
+  await persistSession({ accessToken, refreshToken });
+}
+
+function buildAppleStoredProfile(
+  previousProfile: StoredProfile,
+  credential: AppleAuthentication.AppleAuthenticationCredential,
+): StoredProfile {
+  const givenName = credential.fullName?.givenName?.trim() ?? '';
+  const familyName = credential.fullName?.familyName?.trim() ?? '';
+  const displayName = [givenName, familyName].filter(Boolean).join(' ').trim();
+  const nextEmail = credential.email?.trim() || previousProfile.email || '';
+  const fallbackUsername = credential.user.slice(0, 12);
+  const usernameFromEmail = nextEmail.split('@')[0]?.trim() || '';
+
+  return {
+    ...previousProfile,
+    displayName: displayName || previousProfile.displayName || 'Apple Kullanıcısı',
+    username: usernameFromEmail || previousProfile.username || fallbackUsername,
+    email: nextEmail,
+  };
 }
 
 export const authService = {
@@ -130,6 +231,7 @@ export const authService = {
           storage.setLoggedIn(false),
           storage.clearAccessToken(),
           storage.clearRefreshToken(),
+          storage.clearAuthProvider(),
         ]);
       }
 
@@ -157,9 +259,55 @@ export const authService = {
     }
   },
 
+  async loginWithGoogle(): Promise<void> {
+    try {
+      await loginWithOAuthProvider('google');
+    } catch (error: any) {
+      throw new Error(normalizeOAuthErrorMessage(error?.message || 'Google ile giriş yapılamadı.'));
+    }
+  },
+
+  async loginWithApple(): Promise<void> {
+    try {
+      const isAvailable = await AppleAuthentication.isAvailableAsync();
+      if (!isAvailable) {
+        throw new Error('Apple ile giriş bu cihazda kullanılamıyor.');
+      }
+
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (!credential.user) {
+        throw new Error('Apple hesabı doğrulanamadı.');
+      }
+
+      const previousProfile = await storage.getProfile();
+      const nextProfile = buildAppleStoredProfile(previousProfile, credential);
+
+      await Promise.all([
+        storage.setProfile(nextProfile),
+        storage.setAuthProvider('apple-native'),
+        storage.setAppleUserId(credential.user),
+        storage.clearAccessToken(),
+        storage.clearRefreshToken(),
+        storage.setLoggedIn(true),
+      ]);
+    } catch (error: any) {
+      throw new Error(normalizeOAuthErrorMessage(error?.message || 'Apple ile giriş yapılamadı.'));
+    }
+  },
+
   async logout(): Promise<void> {
-    const token = await storage.getAccessToken();
-    if (token) {
+    const [token, authProvider] = await Promise.all([
+      storage.getAccessToken(),
+      storage.getAuthProvider(),
+    ]);
+
+    if (authProvider === 'supabase' && token) {
       try {
         await supabaseAuthRequest('/logout', {
           method: 'POST',

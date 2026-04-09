@@ -23,6 +23,16 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 
   const iconColor = isDarkCard ? '#EE2AEE' : colors.primary;
   const hasEventImage = !!event.image?.trim();
   const eventImageSource = hasEventImage ? { uri: event.image.trim() } : require('../../../assets/social_dance.png');
+  const compactDate = event.rawDate instanceof Date && !Number.isNaN(event.rawDate.getTime()) ? event.rawDate : null;
+  const compactDayLabel = compactDate
+    ? compactDate.toLocaleDateString('tr-TR', { day: '2-digit' })
+    : '--';
+  const compactMonthLabel = compactDate
+    ? compactDate.toLocaleDateString('tr-TR', { month: 'short' }).replace('.', '').toUpperCase()
+    : '---';
+  const compactLocationParts = variant === 'compact' ? event.location.split(' • ') : [];
+  const compactPrimaryLocation = compactLocationParts[0]?.trim() || event.location;
+  const compactDistance = compactLocationParts.slice(1).join(' • ').trim();
 
   if (variant === 'compact') {
     return (
@@ -41,19 +51,24 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 
         ]}
       >
         <View style={[styles.dateBadge, { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border }]}>
-          <Text style={[{ fontSize: 20, fontWeight: '700', color: colors.primary }]}>{event.date.split(',')[0]?.slice(-2) || '01'}</Text>
+          <Text style={[{ fontSize: 18, fontWeight: '700', color: colors.primary }]}>{compactDayLabel}</Text>
           <Text style={[typography.label, { color: colors.textTertiary }]}>
-            {event.date.split(',')[0]?.slice(0, 3)?.toUpperCase() || 'OCA'}
+            {compactMonthLabel}
           </Text>
         </View>
         <View style={styles.compactContent}>
-<Text style={[typography.bodySmallBold, { color: textColor }]} numberOfLines={1}>{event.title}</Text>
-        <View style={styles.row}>
+          <Text style={[typography.bodySmallBold, { color: textColor }]} numberOfLines={2}>{event.title}</Text>
+          <View style={styles.compactLocationRow}>
             <Icon name="map-marker-outline" size={12} color={iconColor} />
-            <Text style={[typography.caption, { color: textSecondaryColor, marginLeft: 4 }]} numberOfLines={1}>
-              {event.location}
+            <Text style={[typography.caption, styles.compactLocationText, { color: textSecondaryColor }]} numberOfLines={1} ellipsizeMode="tail">
+              {compactPrimaryLocation}
             </Text>
           </View>
+          {compactDistance ? (
+            <Text style={[typography.caption, styles.compactDistanceText, { color: textSecondaryColor }]} numberOfLines={1}>
+              {compactDistance}
+            </Text>
+          ) : null}
         </View>
       </TouchableOpacity>
     );
@@ -140,17 +155,34 @@ const styles = StyleSheet.create({
   compactCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 14,
   },
   dateBadge: {
-    width: 56,
-    height: 56,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   compactContent: {
     flex: 1,
+    minWidth: 0,
     gap: 4,
+  },
+  compactLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    minWidth: 0,
+  },
+  compactLocationText: {
+    marginLeft: 4,
+    flex: 1,
+    flexShrink: 1,
+    width: 0,
+    lineHeight: 16,
+  },
+  compactDistanceText: {
+    marginLeft: 16,
+    lineHeight: 15,
   },
 });

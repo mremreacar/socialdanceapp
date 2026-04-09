@@ -70,10 +70,17 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const refreshProfile = useCallback(async () => {
     setError(null);
     const hasApi = hasSupabaseConfig();
-    const [token, refreshToken] = await Promise.all([
+    const [token, refreshToken, authProvider] = await Promise.all([
       storage.getAccessToken(),
       storage.getRefreshToken(),
+      storage.getAuthProvider(),
     ]);
+
+    if (authProvider === 'apple-native') {
+      const storedProfile = await storage.getProfile();
+      applyProfile(mapStoredProfileToProfile(storedProfile));
+      return;
+    }
 
     // Backend-driven profile: if there is no session hint (or API), never show stale cached profile.
     if (!hasApi || (!token && !refreshToken)) {
@@ -124,12 +131,13 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await storage.setProfile(nextProfile);
 
     const hasApi = hasSupabaseConfig();
-    const [token, refreshToken] = await Promise.all([
+    const [token, refreshToken, authProvider] = await Promise.all([
       storage.getAccessToken(),
       storage.getRefreshToken(),
+      storage.getAuthProvider(),
     ]);
 
-    if (!hasApi || (!token && !refreshToken)) {
+    if (authProvider === 'apple-native' || !hasApi || (!token && !refreshToken)) {
       return nextProfile;
     }
 

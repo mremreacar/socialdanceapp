@@ -1,19 +1,49 @@
 import React from 'react';
-import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { Screen } from '../../components/layout/Screen';
 import { GoogleColorIcon } from '../../components/ui/GoogleColorIcon';
 import { Icon } from '../../components/ui/Icon';
 import { useTheme } from '../../theme';
 import { AuthStackParamList } from '../../types/navigation';
+import { authService } from '../../services/api/auth';
+import { useProfile } from '../../context/ProfileContext';
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 export const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const { colors, radius, shadows, spacing, typography } = useTheme();
+  const { refreshProfile } = useProfile();
+  const [googleLoading, setGoogleLoading] = React.useState(false);
+  const [appleLoading, setAppleLoading] = React.useState(false);
 
-  const showComingSoon = () => {
-    Alert.alert('Yakinda', 'Google ve Apple ile giris henuz Supabase tarafina bagli degil. Simdilik e-posta ile devam et.');
+  const handleGoogleLogin = async () => {
+    if (googleLoading) return;
+    setGoogleLoading(true);
+    try {
+      await authService.loginWithGoogle();
+      await refreshProfile().catch(() => {});
+      navigation.replace('Preferences');
+    } catch (error: any) {
+      Alert.alert('Google ile giris', error?.message || 'Google ile giriş yapılamadı. Lütfen tekrar deneyiniz.');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleAppleLogin = async () => {
+    if (appleLoading) return;
+    setAppleLoading(true);
+    try {
+      await authService.loginWithApple();
+      await refreshProfile().catch(() => {});
+      navigation.replace('Preferences');
+    } catch (error: any) {
+      Alert.alert('Apple ile giris', error?.message || 'Apple ile giriş yapılamadı. Lütfen tekrar deneyiniz.');
+    } finally {
+      setAppleLoading(false);
+    }
   };
 
   return (
@@ -56,8 +86,9 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
           <View style={{ width: '100%', gap: 12, marginTop: spacing.xxxxl + spacing.xs }}>
             <TouchableOpacity
-              onPress={showComingSoon}
+              onPress={handleGoogleLogin}
               activeOpacity={0.8}
+              disabled={googleLoading}
               style={[
                 styles.socialButton,
                 {
@@ -70,26 +101,38 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
               ]}
             >
               <GoogleColorIcon size={22} style={styles.socialIconLeft} />
-              <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Google ile Devam Et</Text>
+              <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>
+                {googleLoading ? 'Google ile giriş yapılıyor...' : 'Google ile Devam Et'}
+              </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={showComingSoon}
-              activeOpacity={0.8}
-              style={[
-                styles.socialButton,
-                {
-                  backgroundColor: '#1E1E1E',
-                  borderWidth: 0.5,
-                  borderColor: '#FFFFFF',
-                  borderRadius: radius.xl,
-                  ...shadows.sm,
-                },
-              ]}
-            >
-              <Icon name="apple" size={22} color="#FFFFFF" style={styles.socialIconLeft} />
-              <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Apple ile Devam Et</Text>
-            </TouchableOpacity>
+            {Platform.OS === 'ios' ? (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE_OUTLINE}
+                cornerRadius={radius.xl}
+                style={[styles.appleButton, { ...shadows.sm }]}
+                onPress={handleAppleLogin}
+              />
+            ) : (
+              <TouchableOpacity
+                onPress={() => Alert.alert('Apple ile giris', 'Apple ile giriş yalnızca iOS cihazlarda kullanılabilir.')}
+                activeOpacity={0.8}
+                style={[
+                  styles.socialButton,
+                  {
+                    backgroundColor: '#1E1E1E',
+                    borderWidth: 0.5,
+                    borderColor: '#FFFFFF',
+                    borderRadius: radius.xl,
+                    ...shadows.sm,
+                  },
+                ]}
+              >
+                <Icon name="apple" size={22} color="#FFFFFF" style={styles.socialIconLeft} />
+                <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Apple ile Devam Et</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={{ marginTop: spacing.xl, width: '100%' }}>
@@ -150,6 +193,10 @@ const styles = StyleSheet.create({
   },
   socialIconLeft: {
     marginRight: 19,
+  },
+  appleButton: {
+    width: '100%',
+    height: 56,
   },
   gradientBorder: {
     padding: 1,
