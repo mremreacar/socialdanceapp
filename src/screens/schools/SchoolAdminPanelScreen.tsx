@@ -12,7 +12,13 @@ import { TabSwitch } from '../../components/domain/TabSwitch';
 import { MainStackParamList } from '../../types/navigation';
 import { useTheme } from '../../theme';
 import { schoolAdminService, type ManagedSchoolModel } from '../../services/api/schoolAdmin';
-import { instructorSchoolEventsService, type ManagedSchoolEventItem } from '../../services/api/schoolEvents';
+import {
+  instructorSchoolEventsService,
+  schoolEventModerationService,
+  type ManagedSchoolEventItem,
+  type PublishStatus,
+  type SchoolEventCreatorSummary,
+} from '../../services/api/schoolEvents';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'SchoolAdminPanel'>;
 type SchoolAdminTabId = 'overview' | 'location' | 'contact' | 'lessons' | 'events';
@@ -32,6 +38,12 @@ function parseOptionalFloat(raw: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+function getPublishStatusMeta(status: PublishStatus | null | undefined): { label: string; bg: string; fg: string } {
+  if (status === 'approved') return { label: 'Yayında', bg: 'rgba(34,197,94,0.14)', fg: '#86EFAC' };
+  if (status === 'rejected') return { label: 'Reddedildi', bg: 'rgba(239,68,68,0.14)', fg: '#FCA5A5' };
+  return { label: 'Onay Bekliyor', bg: 'rgba(245,158,11,0.16)', fg: '#FCD34D' };
+}
+
 export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) => {
   const { colors, spacing, radius, typography } = useTheme();
   const [activeTab, setActiveTab] = useState<SchoolAdminTabId>('overview');
@@ -44,6 +56,9 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [schoolEvents, setSchoolEvents] = useState<ManagedSchoolEventItem[]>([]);
   const [schoolLessons, setSchoolLessons] = useState<ManagedSchoolEventItem[]>([]);
+  const [eventCreators, setEventCreators] = useState<SchoolEventCreatorSummary[]>([]);
+  const [eventActionLoadingId, setEventActionLoadingId] = useState<string | null>(null);
+  const [permissionLoadingUserId, setPermissionLoadingUserId] = useState<string | null>(null);
 
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
@@ -79,12 +94,16 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
     setLoading(true);
     setErrorBanner(null);
     try {
-      const [row, eventRows] = await Promise.all([
+      const [row, eventRows, creatorRows] = await Promise.all([
         schoolAdminService.getManagedSchool(route.params.schoolId),
         instructorSchoolEventsService.listMine().catch(() => []),
+        schoolEventModerationService.listCreatorsForSchool(route.params.schoolId).catch(() => []),
       ]);
       if (!row) {
         setSchool(null);
+        setEventCreators([]);
+        setSchoolEvents([]);
+        setSchoolLessons([]);
         setErrorBanner('Okul bulunamadı.');
       } else {
         applySchool(row);
@@ -93,8 +112,12 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
         (eventRows ?? []).filter((item) => item.school_id === route.params.schoolId && item.event_type !== 'lesson'),
       );
       setSchoolLessons((eventRows ?? []).filter((item) => item.school_id === route.params.schoolId && item.event_type === 'lesson'));
+      setEventCreators(creatorRows);
     } catch (error: unknown) {
       setSchool(null);
+      setEventCreators([]);
+      setSchoolEvents([]);
+      setSchoolLessons([]);
       setErrorBanner(error instanceof Error ? error.message : 'Okul paneli yüklenemedi.');
     } finally {
       setLoading(false);
@@ -114,6 +137,18 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
   const ownerNote = useMemo(
     () => 'Bu panel atandığın okulun bilgilerini güncellemen, düzenlemen ve silmen için açılır.',
     [],
+  );
+  const moderationQueue = useMemo(
+    () =>
+      schoolEvents
+        .filter((item) => item.publish_status !== 'approved')
+        .sort((a, b) => {
+          if (a.publish_status === b.publish_status) return b.starts_at.localeCompare(a.starts_at);
+          if (a.publish_status === 'pending') return -1;
+          if (b.publish_status === 'pending') return 1;
+          return b.starts_at.localeCompare(a.starts_at);
+        }),
+    [schoolEvents],
   );
 
   const displayImageUri = selectedImageUri?.trim() || imageUrl.trim();
@@ -159,6 +194,56 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
       setErrorBanner('Kapak görseli seçilemedi.');
     }
   };
+
+  const handleApproveEvent = useCallback(async (eventId: string) => {
+    setEventActionLoadingId(eventId);
+    setErrorBanner(null);
+    try {
+      await schoolEventModerationService.approveEvent(route.params.schoolId, eventId);
+      setSuccessModal('Etkinlik onaylandı ve yayına alındı.');
+      await load();
+    } catch (error) {
+      setErrorBanner(error instanceof Error ? error.message : 'Etkinlik onaylanamadı.');
+    } finally {
+      setEventActionLoadingId((current) => (current === eventId ? null : current));
+    }
+  }, [load, route.params.schoolId]);
+
+  const handleRejectEvent = useCallback(async (eventId: string) => {
+    setEventActionLoadingId(eventId);
+    setErrorBanner(null);
+    try {
+      await schoolEventModerationService.rejectEvent(route.params.schoolId, eventId, 'Etkinlik admin incelemesinde reddedildi.');
+      setSuccessModal('Etkinlik reddedildi. Kullanıcı panelinde red bilgisi görünecek.');
+      await load();
+    } catch (error) {
+      setErrorBanner(error instanceof Error ? error.message : 'Etkinlik reddedilemedi.');
+    } finally {
+      setEventActionLoadingId((current) => (current === eventId ? null : current));
+    }
+  }, [load, route.params.schoolId]);
+
+  const handleToggleCreatorPermission = useCallback(async (creator: SchoolEventCreatorSummary) => {
+    setPermissionLoadingUserId(creator.userId);
+    setErrorBanner(null);
+    try {
+      await schoolEventModerationService.setCreatorPublishPermission(
+        route.params.schoolId,
+        creator.userId,
+        !creator.canPublishWithoutApproval,
+      );
+      setSuccessModal(
+        creator.canPublishWithoutApproval
+          ? 'Organizatör yetkisi kaldırıldı. Yeni etkinlikler tekrar onaya düşecek.'
+          : 'Kullanıcı organizatör yapıldı. Yeni etkinlikleri onaysız yayınlayabilir.',
+      );
+      await load();
+    } catch (error) {
+      setErrorBanner(error instanceof Error ? error.message : 'Kullanıcı yetkisi güncellenemedi.');
+    } finally {
+      setPermissionLoadingUserId((current) => (current === creator.userId ? null : current));
+    }
+  }, [load, route.params.schoolId]);
 
   const renderTabContent = () => {
     if (activeTab === 'overview') {
@@ -324,6 +409,142 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
               paddingTop: spacing.lg,
             }}
           >
+            <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Onay kuyruğu</Text>
+            {moderationQueue.length === 0 ? (
+              <Text style={[typography.caption, { color: colors.textTertiary }]}>Bekleyen veya reddedilmiş etkinlik yok.</Text>
+            ) : (
+              moderationQueue.map((event) => {
+                const statusMeta = getPublishStatusMeta(event.publish_status);
+                return (
+                  <View
+                    key={`review-${event.id}`}
+                    style={{
+                      marginTop: spacing.sm,
+                      padding: spacing.md,
+                      backgroundColor: '#241626',
+                      borderRadius: radius.xl,
+                      borderWidth: 1,
+                      borderColor: colors.cardBorder,
+                    }}
+                  >
+                    <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{event.title}</Text>
+                    <View
+                      style={{
+                        marginTop: spacing.sm,
+                        alignSelf: 'flex-start',
+                        paddingHorizontal: spacing.sm,
+                        paddingVertical: 6,
+                        borderRadius: radius.full,
+                        backgroundColor: statusMeta.bg,
+                      }}
+                    >
+                      <Text style={[typography.captionBold, { color: statusMeta.fg }]}>{statusMeta.label}</Text>
+                    </View>
+                    <Text style={[typography.caption, { color: colors.textTertiary, marginTop: spacing.sm }]}>
+                      {formatEventDateLabel(event.starts_at)}
+                    </Text>
+                    {event.location?.trim() ? (
+                      <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 4 }]}>
+                        {event.location.trim()}
+                      </Text>
+                    ) : null}
+                    {event.rejection_reason?.trim() ? (
+                      <Text style={[typography.caption, { color: '#FCA5A5', marginTop: spacing.sm }]}>
+                        Son red bilgisi: {event.rejection_reason.trim()}
+                      </Text>
+                    ) : null}
+                    <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+                      <Button
+                        title="Onayla"
+                        size="sm"
+                        onPress={() => void handleApproveEvent(event.id)}
+                        loading={eventActionLoadingId === event.id}
+                        disabled={eventActionLoadingId != null && eventActionLoadingId !== event.id}
+                        style={{ flex: 1 }}
+                      />
+                      <Button
+                        title="Reddet"
+                        size="sm"
+                        variant="danger"
+                        onPress={() => void handleRejectEvent(event.id)}
+                        loading={eventActionLoadingId === event.id}
+                        disabled={eventActionLoadingId != null && eventActionLoadingId !== event.id}
+                        style={{ flex: 1 }}
+                      />
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+
+          <View
+            style={{
+              borderTopWidth: 1,
+              borderTopColor: colors.cardBorder,
+              paddingTop: spacing.lg,
+            }}
+          >
+            <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Etkinlik oluşturan kullanıcılar</Text>
+            {eventCreators.length === 0 ? (
+              <Text style={[typography.caption, { color: colors.textTertiary }]}>Bu okul için henüz etkinlik oluşturan kullanıcı yok.</Text>
+            ) : (
+              eventCreators.map((creator) => (
+                <View
+                  key={creator.userId}
+                  style={{
+                    marginTop: spacing.sm,
+                    padding: spacing.md,
+                    backgroundColor: '#241626',
+                    borderRadius: radius.xl,
+                    borderWidth: 1,
+                    borderColor: colors.cardBorder,
+                    gap: spacing.sm,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>
+                        {creator.displayName}
+                      </Text>
+                      <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>
+                        {creator.username ? `@${creator.username}` : 'Kullanıcı adı yok'} · {creator.eventCount} etkinlik
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        paddingHorizontal: spacing.sm,
+                        paddingVertical: 6,
+                        borderRadius: radius.full,
+                        backgroundColor: creator.canPublishWithoutApproval ? 'rgba(34,197,94,0.14)' : 'rgba(255,255,255,0.08)',
+                      }}
+                    >
+                      <Text style={[typography.captionBold, { color: creator.canPublishWithoutApproval ? '#86EFAC' : '#D1D5DB' }]}>
+                        {creator.canPublishWithoutApproval ? 'Organizatör' : 'Standart'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Button
+                    title={creator.canPublishWithoutApproval ? 'Organizatör yetkisini kaldır' : 'Organizatör yap'}
+                    size="sm"
+                    variant={creator.canPublishWithoutApproval ? 'outline' : 'primary'}
+                    onPress={() => void handleToggleCreatorPermission(creator)}
+                    loading={permissionLoadingUserId === creator.userId}
+                    disabled={permissionLoadingUserId != null && permissionLoadingUserId !== creator.userId}
+                    fullWidth
+                  />
+                </View>
+              ))
+            )}
+          </View>
+
+          <View
+            style={{
+              borderTopWidth: 1,
+              borderTopColor: colors.cardBorder,
+              paddingTop: spacing.lg,
+            }}
+          >
             <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Bu okuldaki etkinlikler</Text>
             {schoolEvents.length === 0 ? (
               <Text style={[typography.caption, { color: colors.textTertiary }]}>Henüz etkinlik yok.</Text>
@@ -332,7 +553,7 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
                 <TouchableOpacity
                   key={event.id}
                   activeOpacity={0.85}
-                  onPress={() => navigation.navigate('EventDetails', { id: event.id })}
+                  onPress={() => navigation.navigate('EventDetails', { id: event.id, includeUnpublished: true })}
                   style={{
                     marginTop: spacing.sm,
                     padding: spacing.md,
@@ -343,6 +564,20 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
                   }}
                 >
                   <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{event.title}</Text>
+                  <View
+                    style={{
+                      marginTop: spacing.sm,
+                      alignSelf: 'flex-start',
+                      paddingHorizontal: spacing.sm,
+                      paddingVertical: 6,
+                      borderRadius: radius.full,
+                      backgroundColor: getPublishStatusMeta(event.publish_status).bg,
+                    }}
+                  >
+                    <Text style={[typography.captionBold, { color: getPublishStatusMeta(event.publish_status).fg }]}>
+                      {getPublishStatusMeta(event.publish_status).label}
+                    </Text>
+                  </View>
                   <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>
                     {formatEventDateLabel(event.starts_at)}
                   </Text>

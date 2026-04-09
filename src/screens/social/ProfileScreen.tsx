@@ -26,6 +26,8 @@ import { followService, type FollowListUser } from '../../services/api/follows';
 import { danceCircleService, type DancedWithPerson } from '../../services/api/danceCircle';
 import { hasSupabaseConfig } from '../../services/api/apiClient';
 import { useDanceCatalog } from '../../hooks/useDanceCatalog';
+import { instructorProfileService } from '../../services/api/instructorProfile';
+import { creatorSchoolEventsService } from '../../services/api/schoolEvents';
 
 const ProfileInfoRow: React.FC<{
   label: string;
@@ -69,6 +71,7 @@ export const ProfileScreen: React.FC = () => {
   const [followActionBusyIds, setFollowActionBusyIds] = useState<Set<string>>(new Set());
   const [followCounts, setFollowCounts] = useState<{ following: number; followers: number }>({ following: 0, followers: 0 });
   const [refreshing, setRefreshing] = useState(false);
+  const [roleLabel, setRoleLabel] = useState<string>('');
   const [dancedModalVisible, setDancedModalVisible] = useState(false);
   const [followListModalVisible, setFollowListModalVisible] = useState(false);
   const [followListSearchQuery, setFollowListSearchQuery] = useState('');
@@ -116,6 +119,32 @@ export const ProfileScreen: React.FC = () => {
     }
   }, []);
 
+  const loadRoleLabel = useCallback(async () => {
+    if (!hasSupabaseConfig()) {
+      setRoleLabel('');
+      return;
+    }
+    try {
+      const [instructorProfile, publishPermission] = await Promise.all([
+        instructorProfileService.getMine().catch(() => null),
+        creatorSchoolEventsService.getMyPublishPermission().catch(() => ({ canPublishWithoutApproval: false, grantedBySchoolId: null })),
+      ]);
+      const isInstructor = !!instructorProfile;
+      const isOrganizer = !!publishPermission.canPublishWithoutApproval;
+      if (isInstructor && isOrganizer) {
+        setRoleLabel('Eğitmen ve Organizatör');
+      } else if (isInstructor) {
+        setRoleLabel('Eğitmen');
+      } else if (isOrganizer) {
+        setRoleLabel('Organizatör');
+      } else {
+        setRoleLabel('');
+      }
+    } catch {
+      setRoleLabel('');
+    }
+  }, []);
+
   const loadFollowLists = useCallback(async () => {
     if (!hasSupabaseConfig()) {
       setFollowingList([]);
@@ -156,7 +185,8 @@ export const ProfileScreen: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       void loadDancedWith();
-    }, [loadDancedWith]),
+      void loadRoleLabel();
+    }, [loadDancedWith, loadRoleLabel]),
   );
 
   const onRefresh = async () => {
@@ -168,6 +198,7 @@ export const ProfileScreen: React.FC = () => {
         followService.getMyFollowCounts().then((counts) => setFollowCounts({ following: counts.following, followers: counts.followers })),
         loadDancedWith(),
         loadFollowLists(),
+        loadRoleLabel(),
       ]);
     } catch {
       // ignore: UI already shows cached profile; refresh is best-effort
@@ -519,6 +550,21 @@ export const ProfileScreen: React.FC = () => {
         ) : null}
         {profile.username ? (
           <Text style={[typography.bodySmall, { color: '#FFFFFF' }]}>@{profile.username}</Text>
+        ) : null}
+        {roleLabel ? (
+          <View
+            style={{
+              marginTop: spacing.sm,
+              paddingHorizontal: spacing.md,
+              paddingVertical: 8,
+              borderRadius: radius.full,
+              backgroundColor: 'rgba(255,255,255,0.10)',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.14)',
+            }}
+          >
+            <Text style={[typography.captionBold, { color: '#FFFFFF' }]}>{roleLabel}</Text>
+          </View>
         ) : null}
         {shouldShowAvatarWarning ? (
           <Text style={[typography.caption, { color: '#F59E0B', textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.xl }]}>

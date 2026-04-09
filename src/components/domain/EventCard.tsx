@@ -57,7 +57,13 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 
           </Text>
         </View>
         <View style={styles.compactContent}>
-          <Text style={[typography.bodySmallBold, { color: textColor }]} numberOfLines={2}>{event.title}</Text>
+          <Text
+            style={[typography.bodySmallBold, styles.compactTitle, { color: textColor }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {event.title}
+          </Text>
           <View style={styles.compactLocationRow}>
             <Icon name="map-marker-outline" size={12} color={iconColor} />
             <Text style={[typography.caption, styles.compactLocationText, { color: textSecondaryColor }]} numberOfLines={1} ellipsizeMode="tail">
@@ -98,7 +104,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 
         transition={200}
       />
       <View style={[styles.listContent, { marginLeft: spacing.lg }]}>
-        <Text style={[typography.bodyBold, { color: textColor }]} numberOfLines={1}>{event.title}</Text>
+        <Text style={[typography.bodyBold, { color: textColor }]} numberOfLines={1} ellipsizeMode="tail">{event.title}</Text>
         <View style={[styles.row, { marginTop: spacing.xs }]}>
           <Icon name="calendar-outline" size={14} color={iconColor} />
           <Text style={[typography.caption, { color: textSecondaryColor, marginLeft: 6, fontWeight: '500' }]}>
@@ -155,7 +161,8 @@ const styles = StyleSheet.create({
   compactCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    padding: 12,
+    minHeight: 92,
   },
   dateBadge: {
     width: 48,
@@ -168,6 +175,11 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 4,
+    justifyContent: 'center',
+  },
+  compactTitle: {
+    minHeight: 18,
+    lineHeight: 18,
   },
   compactLocationRow: {
     flexDirection: 'row',

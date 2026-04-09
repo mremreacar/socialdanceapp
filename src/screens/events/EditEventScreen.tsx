@@ -142,6 +142,7 @@ export const EditEventScreen: React.FC = () => {
           district: null,
           latitude: null,
           longitude: null,
+          google_maps_url: null,
           rating: null,
           review_count: null,
           website: null,
@@ -164,6 +165,7 @@ export const EditEventScreen: React.FC = () => {
   const [locationCity, setLocationCity] = useState<string | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [hasInstructorProfile, setHasInstructorProfile] = useState(false);
+  const [canPublishWithoutApproval, setCanPublishWithoutApproval] = useState(false);
   const [selectedDanceTypeId, setSelectedDanceTypeId] = useState<string | null>(null);
   const [showDancePicker, setShowDancePicker] = useState(false);
   const [danceSearchQuery, setDanceSearchQuery] = useState('');
@@ -236,7 +238,13 @@ export const EditEventScreen: React.FC = () => {
   }, [danceSearchQuery, danceSections]);
   const selectedDanceTypeLabel = selectedDanceTypeId ? compactBySubId.get(selectedDanceTypeId) ?? '' : '';
   const screenTitle = isEditing ? 'Etkinlik Düzenle' : 'Etkinlik Oluştur';
-  const submitLabel = isEditing ? 'Güncelle' : 'Yayınla';
+  const submitLabel = isEditing
+    ? canPublishWithoutApproval
+      ? 'Güncelle ve Yayınla'
+      : 'Güncelle ve Onaya Gönder'
+    : canPublishWithoutApproval
+    ? 'Yayınla'
+    : 'Onaya Gönder';
 
   const loadInstructorAccess = useCallback(async () => {
     if (!hasSupabaseConfig()) {
@@ -304,6 +312,23 @@ export const EditEventScreen: React.FC = () => {
 
   useFocusEffect(
     useCallback(() => {
+      let cancelled = false;
+      void creatorSchoolEventsService
+        .getMyPublishPermission()
+        .then((permission) => {
+          if (!cancelled) setCanPublishWithoutApproval(permission.canPublishWithoutApproval);
+        })
+        .catch(() => {
+          if (!cancelled) setCanPublishWithoutApproval(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
       void loadEditableEvent();
     }, [loadEditableEvent]),
   );
@@ -333,6 +358,8 @@ export const EditEventScreen: React.FC = () => {
 
     setSaving(true);
     try {
+      const nextPublishStatus: 'approved' | 'pending' = canPublishWithoutApproval ? 'approved' : 'pending';
+      const publishedAt = canPublishWithoutApproval ? new Date().toISOString() : null;
       const payload = {
         schoolId: selectedSchoolId,
         title: eventName,
@@ -345,6 +372,10 @@ export const EditEventScreen: React.FC = () => {
         priceCurrency: 'TRY',
         eventType: 'event',
         danceTypeIds: selectedDanceTypeId ? [selectedDanceTypeId] : [],
+        publishStatus: nextPublishStatus,
+        publishedAt,
+        approvedAt: publishedAt,
+        rejectionReason: null,
         locationPlace: {
           address: locationAddress,
           formatted_address: locationAddress,
@@ -359,8 +390,16 @@ export const EditEventScreen: React.FC = () => {
       }
 
       setAlertModal({
-        title: isEditing ? 'Etkinlik güncellendi' : 'Etkinlik oluşturuldu',
-        message: isEditing ? 'Etkinlik bilgileri başarıyla güncellendi.' : 'Etkinlik başarıyla kaydedildi.',
+        title: canPublishWithoutApproval
+          ? isEditing
+            ? 'Etkinlik güncellendi'
+            : 'Etkinlik yayınlandı'
+          : 'Etkinlik onaya gönderildi',
+        message: canPublishWithoutApproval
+          ? isEditing
+            ? 'Etkinlik bilgileri başarıyla güncellendi. Organizatör yetkin sayesinde etkinlik yayında.'
+            : 'Organizatör yetkin sayesinde etkinlik hemen yayınlandı.'
+          : 'Etkinlik admin onayına gönderildi. Onay sonrası uygulamada yayınlanacak.',
         goBackOnClose: true,
       });
     } catch (error) {
@@ -371,7 +410,7 @@ export const EditEventScreen: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [description, eventDateTime, eventId, eventName, isEditing, locationAddress, locationCity, participantLimit, selectedDanceTypeId, selectedSchoolId, ticketPrice]);
+  }, [canPublishWithoutApproval, description, eventDateTime, eventId, eventName, isEditing, locationAddress, locationCity, participantLimit, selectedDanceTypeId, selectedSchoolId, ticketPrice]);
 
   useEffect(() => {
     if (showDatePicker) {
@@ -438,6 +477,7 @@ export const EditEventScreen: React.FC = () => {
                     district: null,
                     latitude: null,
                     longitude: null,
+                    google_maps_url: null,
                     rating: null,
                     review_count: null,
                     website: null,
@@ -463,6 +503,7 @@ export const EditEventScreen: React.FC = () => {
                   district: null,
                   latitude: null,
                   longitude: null,
+                  google_maps_url: null,
                   rating: null,
                   review_count: null,
                   website: null,

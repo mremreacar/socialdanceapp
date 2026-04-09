@@ -14,7 +14,7 @@ import { EmptyState } from '../../components/feedback/EmptyState';
 import { MainStackParamList } from '../../types/navigation';
 import { scheduleEventReminder } from '../../services/notifications';
 import { ApiError } from '../../services/api/apiClient';
-import { getSchoolEventDetailsById } from '../../services/api/schoolEvents';
+import { getSchoolEventDetailsById, type PublishStatus } from '../../services/api/schoolEvents';
 import { schoolEventAttendeesService, type EventAttendee } from '../../services/api/schoolEventAttendees';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'EventDetails'>;
@@ -106,6 +106,7 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const [remoteEvent, setRemoteEvent] = useState<{
     title: string;
     isLesson: boolean;
+    publishStatus: PublishStatus;
     dateLabel: string;
     startsAtDate: Date | null;
     venue: string;
@@ -129,7 +130,7 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }
     setLoading(true);
     setLoadError(null);
-    void getSchoolEventDetailsById(route.params.id)
+    void getSchoolEventDetailsById(route.params.id, { includeUnpublished: route.params.includeUnpublished === true })
       .then((row) => {
         if (!row) {
           setRemoteEvent(null);
@@ -140,6 +141,7 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         setRemoteEvent({
           title: row.title?.trim() || 'Etkinlik',
           isLesson: (row.event_type ?? '').trim().toLowerCase() === 'lesson',
+          publishStatus: row.publish_status === 'approved' || row.publish_status === 'rejected' ? row.publish_status : 'pending',
           dateLabel: formatStartsAtRangeLabel(row.starts_at, row.ends_at) || '-',
           startsAtDate: Number.isNaN(startsAt.getTime()) ? null : startsAt,
           venue: row.location?.trim() || '-',
@@ -160,7 +162,7 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       .finally(() => {
         setLoading(false);
       });
-  }, [route.params.id]);
+  }, [route.params.id, route.params.includeUnpublished]);
 
   const eventTitle = remoteEvent?.title ?? 'Etkinlik';
   const eventDateLabel = remoteEvent?.dateLabel ?? '-';

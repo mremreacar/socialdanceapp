@@ -9,7 +9,7 @@ import { EmptyState } from '../../components/feedback/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import { useTheme } from '../../theme';
-import { creatorSchoolEventsService, type ManagedSchoolEventItem } from '../../services/api/schoolEvents';
+import { creatorSchoolEventsService, type ManagedSchoolEventItem, type PublishStatus } from '../../services/api/schoolEvents';
 import { MainStackParamList } from '../../types/navigation';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
@@ -28,6 +28,12 @@ function formatEventDateLabel(iso: string): string {
 
 function getEventTypeLabel(value: string | null | undefined): string {
   return value === 'lesson' ? 'Ders' : 'Etkinlik';
+}
+
+function getPublishStatusMeta(status: PublishStatus | null | undefined): { label: string; bg: string; fg: string } {
+  if (status === 'approved') return { label: 'Yayında', bg: 'rgba(34,197,94,0.14)', fg: '#86EFAC' };
+  if (status === 'rejected') return { label: 'Reddedildi', bg: 'rgba(239,68,68,0.14)', fg: '#FCA5A5' };
+  return { label: 'Onay Bekliyor', bg: 'rgba(245,158,11,0.16)', fg: '#FCD34D' };
 }
 
 export const UserPanelScreen: React.FC = () => {
@@ -101,7 +107,7 @@ export const UserPanelScreen: React.FC = () => {
         }}
         onConfirm={confirmDelete}
       />
-      <Header title="Kullanıcı Paneli" showBack />
+      <Header title="Etkinlik Paneli" showBack />
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
         showsVerticalScrollIndicator={false}
@@ -175,11 +181,12 @@ export const UserPanelScreen: React.FC = () => {
             </Text>
             {items.map((item) => {
               const locationLine = item.location?.trim() || item.city?.trim() || item.school_name;
+              const statusMeta = getPublishStatusMeta(item.publish_status);
               return (
                 <TouchableOpacity
                   key={item.id}
                   activeOpacity={0.9}
-                  onPress={() => navigation.navigate('EventDetails', { id: item.id })}
+                  onPress={() => navigation.navigate('EventDetails', { id: item.id, includeUnpublished: true })}
                   style={[
                     styles.eventCard,
                     {
@@ -208,6 +215,19 @@ export const UserPanelScreen: React.FC = () => {
                     </View>
                   </View>
 
+                  <View
+                    style={{
+                      marginTop: spacing.sm,
+                      alignSelf: 'flex-start',
+                      paddingHorizontal: spacing.sm,
+                      paddingVertical: 6,
+                      borderRadius: radius.full,
+                      backgroundColor: statusMeta.bg,
+                    }}
+                  >
+                    <Text style={[typography.captionBold, { color: statusMeta.fg }]}>{statusMeta.label}</Text>
+                  </View>
+
                   <View style={{ marginTop: spacing.md }}>
                     <View style={styles.metaRow}>
                       <Icon name="calendar-outline" size={16} color="#9CA3AF" />
@@ -221,6 +241,11 @@ export const UserPanelScreen: React.FC = () => {
                         {locationLine || 'Konum bilgisi yakında güncellenecek'}
                       </Text>
                     </View>
+                    {item.publish_status === 'rejected' && item.rejection_reason?.trim() ? (
+                      <Text style={[typography.caption, { color: '#FCA5A5', marginTop: spacing.sm }]}>
+                        Red nedeni: {item.rejection_reason.trim()}
+                      </Text>
+                    ) : null}
                   </View>
 
                   <View style={[styles.actionsRow, { marginTop: spacing.lg }]}>
@@ -228,7 +253,7 @@ export const UserPanelScreen: React.FC = () => {
                       title="Detay"
                       variant="outline"
                       size="sm"
-                      onPress={() => navigation.navigate('EventDetails', { id: item.id })}
+                      onPress={() => navigation.navigate('EventDetails', { id: item.id, includeUnpublished: true })}
                       style={styles.detailActionButton}
                       textStyle={styles.detailButtonText}
                     />

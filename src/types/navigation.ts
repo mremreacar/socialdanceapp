@@ -22,7 +22,7 @@ export type MainTabsParamList = {
 
 export type MainStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabsParamList>;
-  EventDetails: { id: string; fromFavorites?: boolean };
+  EventDetails: { id: string; fromFavorites?: boolean; includeUnpublished?: boolean };
   SchoolDetails: { id: string };
   SchoolAdminPanel: { schoolId: string };
   FavoriteSchools: undefined;

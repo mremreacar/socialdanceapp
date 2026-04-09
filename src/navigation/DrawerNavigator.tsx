@@ -73,7 +73,7 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = ({ navigation
       items: [
         { label: 'Profil', icon: 'account-outline', route: 'Profile' },
         { label: hasInstructorProfile ? 'Eğitmen Paneli' : 'Eğitmen Ol', icon: 'account-star-outline', route: 'InstructorOnboarding' },
-        { label: 'Kullanıcı Paneli', icon: 'view-dashboard-outline', route: 'UserPanel' },
+        { label: 'Etkinlik Paneli', icon: 'view-dashboard-outline', route: 'UserPanel' },
       ],
     },
   ], [hasInstructorProfile]);

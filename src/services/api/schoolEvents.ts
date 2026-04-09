@@ -2,9 +2,12 @@ import { ApiError, supabaseAuthRequest, supabaseRestRequest } from './apiClient'
 import { storage } from '../storage';
 import { listAssignedSchoolIdsForUser } from './instructorSchoolAssignments';
 
+export type PublishStatus = 'pending' | 'approved' | 'rejected';
+
 export type SchoolEventRow = {
   id: string;
   school_id: string | null;
+  created_by?: string | null;
   title: string;
   starts_at: string;
   ends_at?: string | null;
@@ -21,6 +24,13 @@ export type SchoolEventRow = {
   payment_details?: string | null;
   media_items?: unknown;
   schedule_items?: unknown;
+  publish_status?: PublishStatus | null;
+  published_at?: string | null;
+  approved_at?: string | null;
+  approved_by?: string | null;
+  rejected_at?: string | null;
+  rejected_by?: string | null;
+  rejection_reason?: string | null;
 };
 
 export type SchoolEventDetails = SchoolEventRow & {
@@ -53,6 +63,27 @@ export type CreateSchoolEventInput = {
   eventType?: string | null;
   danceTypeIds?: string[];
   locationPlace?: Record<string, unknown> | null;
+  publishStatus?: PublishStatus | null;
+  publishedAt?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  rejectedAt?: string | null;
+  rejectedBy?: string | null;
+  rejectionReason?: string | null;
+};
+
+export type EventPublishPermissionStatus = {
+  canPublishWithoutApproval: boolean;
+  grantedBySchoolId: string | null;
+};
+
+export type SchoolEventCreatorSummary = {
+  userId: string;
+  displayName: string;
+  username: string;
+  avatarUrl: string | null;
+  eventCount: number;
+  canPublishWithoutApproval: boolean;
 };
 
 type SupabaseUserResponse = {
@@ -81,15 +112,29 @@ type DanceTypeRow = {
 type EventAttendeeIdentityRow = {
   user_id?: string | null;
 };
+
 type LegacyEventAttendeeRow = {
   user_id?: string | null;
 };
+
 type BookingAttendeeRow = {
   user_id?: string | null;
 };
 
+type ProfileLiteRow = {
+  id: string;
+  display_name?: string | null;
+  username?: string | null;
+  avatar_url?: string | null;
+};
+
+type EventPublishPermissionRow = {
+  user_id: string;
+  granted_by_school_id?: string | null;
+};
+
 function baseSchoolEventSelect(): string {
-  return 'id,school_id,title,starts_at,ends_at,city,location,image_url,description,location_place,event_type,price_amount,price_currency,participant_limit,payment_methods,payment_details,media_items,schedule_items';
+  return 'id,school_id,created_by,title,starts_at,ends_at,city,location,image_url,description,location_place,event_type,price_amount,price_currency,participant_limit,payment_methods,payment_details,media_items,schedule_items,publish_status,published_at,approved_at,approved_by,rejected_at,rejected_by,rejection_reason';
 }
 
 function normalizeDanceTypeIds(input: string[] | undefined): string[] {
@@ -97,7 +142,7 @@ function normalizeDanceTypeIds(input: string[] | undefined): string[] {
 }
 
 function buildSchoolEventPayload(input: CreateSchoolEventInput): Record<string, unknown> {
-  return {
+  const payload: Record<string, unknown> = {
     school_id: input.schoolId ?? null,
     title: input.title.trim(),
     starts_at: input.startsAt,
@@ -111,6 +156,40 @@ function buildSchoolEventPayload(input: CreateSchoolEventInput): Record<string, 
     event_type: input.eventType?.trim() || null,
     location_place: input.locationPlace ?? null,
   };
+
+  if (input.publishStatus) {
+    payload.publish_status = input.publishStatus;
+
+    if (input.publishStatus === 'approved') {
+      const now = input.publishedAt ?? new Date().toISOString();
+      payload.published_at = now;
+      payload.approved_at = input.approvedAt ?? now;
+      payload.approved_by = input.approvedBy ?? null;
+      payload.rejected_at = null;
+      payload.rejected_by = null;
+      payload.rejection_reason = null;
+    } else if (input.publishStatus === 'pending') {
+      payload.published_at = null;
+      payload.approved_at = null;
+      payload.approved_by = null;
+      payload.rejected_at = null;
+      payload.rejected_by = null;
+      payload.rejection_reason = null;
+    } else {
+      payload.rejected_at = input.rejectedAt ?? new Date().toISOString();
+      payload.rejected_by = input.rejectedBy ?? null;
+      payload.rejection_reason = input.rejectionReason?.trim() || null;
+      payload.published_at = null;
+      payload.approved_at = null;
+      payload.approved_by = null;
+    }
+  }
+
+  return payload;
+}
+
+function buildPublishedEventFilter(includeUnpublished?: boolean): string {
+  return includeUnpublished ? '' : '&publish_status=eq.approved';
 }
 
 async function insertEventDanceTypes(eventId: string, danceTypeIds: string[], accessToken: string): Promise<void> {
@@ -208,6 +287,14 @@ async function getMyUserId(accessToken: string): Promise<string> {
   return user.id;
 }
 
+async function assertAssignedSchool(accessToken: string, schoolId: string): Promise<void> {
+  const me = await getMyUserId(accessToken);
+  const schoolIds = await listAssignedSchoolIdsForUser(accessToken, me);
+  if (!schoolIds.includes(schoolId)) {
+    throw new Error('Bu okul için erişim yetkiniz bulunmuyor.');
+  }
+}
+
 async function listSchoolNamesById(ids: string[], accessToken: string): Promise<Map<string, string>> {
   const uniqueIds = [...new Set(ids.filter(Boolean))];
   if (uniqueIds.length === 0) return new Map();
@@ -227,32 +314,68 @@ function attachSchoolNames(events: SchoolEventRow[], schoolNameById: Map<string,
   }));
 }
 
-export async function listSchoolEvents(schoolId: string, limit = 20): Promise<SchoolEventRow[]> {
+function mapCreatorSummary(
+  userId: string,
+  eventCount: number,
+  profileById: Map<string, ProfileLiteRow>,
+  permissionUserIds: Set<string>,
+): SchoolEventCreatorSummary {
+  const profile = profileById.get(userId);
+  const username = (profile?.username ?? '').trim();
+  const displayName = (profile?.display_name ?? '').trim() || username || 'Kullanıcı';
+  return {
+    userId,
+    displayName,
+    username,
+    avatarUrl: profile?.avatar_url?.trim() || null,
+    eventCount,
+    canPublishWithoutApproval: permissionUserIds.has(userId),
+  };
+}
+
+export async function listSchoolEvents(
+  schoolId: string,
+  limit = 20,
+  opts?: { includeUnpublished?: boolean },
+): Promise<SchoolEventRow[]> {
   const safeLimit = Math.min(Math.max(limit, 1), 100);
   return await supabaseRestRequest<SchoolEventRow[]>(
-    `/school_events?select=${baseSchoolEventSelect()}&school_id=eq.${encodeURIComponent(schoolId)}&order=starts_at.asc&limit=${safeLimit}`,
+    `/school_events?select=${baseSchoolEventSelect()}&school_id=eq.${encodeURIComponent(schoolId)}${buildPublishedEventFilter(opts?.includeUnpublished)}&order=starts_at.asc&limit=${safeLimit}`,
     { method: 'GET' },
   );
 }
 
-export async function listAllSchoolEvents(limit = 100): Promise<SchoolEventRow[]> {
+export async function listAllSchoolEvents(limit = 100, opts?: { includeUnpublished?: boolean }): Promise<SchoolEventRow[]> {
   const safeLimit = Math.min(Math.max(limit, 1), 200);
   return await supabaseRestRequest<SchoolEventRow[]>(
-    `/school_events?select=${baseSchoolEventSelect()}&order=starts_at.desc&limit=${safeLimit}`,
+    `/school_events?select=${baseSchoolEventSelect()}${buildPublishedEventFilter(opts?.includeUnpublished)}&order=starts_at.desc&limit=${safeLimit}`,
     { method: 'GET' },
   );
 }
 
-export async function getSchoolEventById(eventId: string): Promise<SchoolEventRow | null> {
+export async function getSchoolEventById(eventId: string, opts?: { includeUnpublished?: boolean }): Promise<SchoolEventRow | null> {
+  if (opts?.includeUnpublished) {
+    return await withAuthorizedUserRequest(async (accessToken) => {
+      const rows = await supabaseRestRequest<SchoolEventRow[]>(
+        `/school_events?select=${baseSchoolEventSelect()}&id=eq.${encodeURIComponent(eventId)}&limit=1`,
+        { method: 'GET', accessToken },
+      );
+      return rows?.[0] ?? null;
+    });
+  }
+
   const rows = await supabaseRestRequest<SchoolEventRow[]>(
-    `/school_events?select=${baseSchoolEventSelect()}&id=eq.${encodeURIComponent(eventId)}&limit=1`,
+    `/school_events?select=${baseSchoolEventSelect()}&id=eq.${encodeURIComponent(eventId)}&publish_status=eq.approved&limit=1`,
     { method: 'GET' },
   );
   return rows?.[0] ?? null;
 }
 
-export async function getSchoolEventDetailsById(eventId: string): Promise<SchoolEventDetails | null> {
-  const event = await getSchoolEventById(eventId);
+export async function getSchoolEventDetailsById(
+  eventId: string,
+  opts?: { includeUnpublished?: boolean },
+): Promise<SchoolEventDetails | null> {
+  const event = await getSchoolEventById(eventId, opts);
   if (!event) return null;
 
   const [danceLinks, attendeeRows, legacyAttendeeRows, bookingRows, eventInstructors] = await Promise.all([
@@ -279,12 +402,13 @@ export async function getSchoolEventDetailsById(eventId: string): Promise<School
   ]);
 
   const danceTypeIds = [...new Set((danceLinks ?? []).map((row) => row.dance_type_id).filter(Boolean))] as string[];
-  const danceTypes = danceTypeIds.length > 0
-    ? await supabaseRestRequest<DanceTypeRow[]>(
-        `/dance_types?select=id,name&id=in.(${danceTypeIds.map((id) => encodeURIComponent(id)).join(',')})`,
-        { method: 'GET' },
-      ).catch(() => [])
-    : [];
+  const danceTypes =
+    danceTypeIds.length > 0
+      ? await supabaseRestRequest<DanceTypeRow[]>(
+          `/dance_types?select=id,name&id=in.(${danceTypeIds.map((id) => encodeURIComponent(id)).join(',')})`,
+          { method: 'GET' },
+        ).catch(() => [])
+      : [];
 
   const danceTypeNames = [...new Set((danceTypes ?? []).map((row) => row.name?.trim()).filter(Boolean))] as string[];
   const attendeeCount = [
@@ -293,8 +417,7 @@ export async function getSchoolEventDetailsById(eventId: string): Promise<School
         ...(attendeeRows ?? []).map((row) => row.user_id?.trim() || ''),
         ...(legacyAttendeeRows ?? []).map((row) => row.user_id?.trim() || ''),
         ...(bookingRows ?? []).map((row) => row.user_id?.trim() || ''),
-      ]
-        .filter(Boolean),
+      ].filter(Boolean),
     ),
   ].length;
 
@@ -408,6 +531,21 @@ export const creatorSchoolEventsService = {
     });
   },
 
+  async getMyPublishPermission(): Promise<EventPublishPermissionStatus> {
+    return await withAuthorizedUserRequest(async (accessToken) => {
+      const me = await getMyUserId(accessToken);
+      const rows = await supabaseRestRequest<EventPublishPermissionRow[]>(
+        `/event_publish_permissions?select=user_id,granted_by_school_id&user_id=eq.${encodeURIComponent(me)}&limit=1`,
+        { method: 'GET', accessToken },
+      ).catch(() => []);
+      const row = rows?.[0];
+      return {
+        canPublishWithoutApproval: !!row,
+        grantedBySchoolId: row?.granted_by_school_id?.trim() || null,
+      };
+    });
+  },
+
   async getMineById(eventId: string): Promise<EditableSchoolEvent | null> {
     return await withAuthorizedUserRequest(async (accessToken) => {
       const me = await getMyUserId(accessToken);
@@ -502,6 +640,133 @@ export const creatorSchoolEventsService = {
         }
         throw error;
       }
+    });
+  },
+};
+
+export const schoolEventModerationService = {
+  async listCreatorsForSchool(schoolId: string): Promise<SchoolEventCreatorSummary[]> {
+    return await withAuthorizedUserRequest(async (accessToken) => {
+      await assertAssignedSchool(accessToken, schoolId);
+      const rows = await supabaseRestRequest<SchoolEventRow[]>(
+        `/school_events?select=${baseSchoolEventSelect()}&school_id=eq.${encodeURIComponent(schoolId)}&order=created_at.desc&limit=200`,
+        { method: 'GET', accessToken },
+      );
+
+      const creatorIds = [...new Set((rows ?? []).map((row) => row.created_by?.trim()).filter(Boolean))] as string[];
+      if (creatorIds.length === 0) return [];
+
+      const eventCountByUserId = new Map<string, number>();
+      creatorIds.forEach((userId) => eventCountByUserId.set(userId, 0));
+      (rows ?? []).forEach((row) => {
+        const userId = row.created_by?.trim();
+        if (!userId) return;
+        eventCountByUserId.set(userId, (eventCountByUserId.get(userId) ?? 0) + 1);
+      });
+
+      const inClause = creatorIds.map((id) => encodeURIComponent(id)).join(',');
+      const [profiles, permissionRows] = await Promise.all([
+        supabaseRestRequest<ProfileLiteRow[]>(
+          `/profiles?select=id,display_name,username,avatar_url&id=in.(${inClause})`,
+          { method: 'GET', accessToken },
+        ).catch(() => []),
+        supabaseRestRequest<EventPublishPermissionRow[]>(
+          `/event_publish_permissions?select=user_id,granted_by_school_id&user_id=in.(${inClause})`,
+          { method: 'GET', accessToken },
+        ).catch(() => []),
+      ]);
+
+      const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
+      const permissionUserIds = new Set((permissionRows ?? []).map((row) => row.user_id));
+
+      return creatorIds
+        .map((userId) => mapCreatorSummary(userId, eventCountByUserId.get(userId) ?? 0, profileById, permissionUserIds))
+        .sort((a, b) => {
+          if (a.canPublishWithoutApproval !== b.canPublishWithoutApproval) {
+            return a.canPublishWithoutApproval ? -1 : 1;
+          }
+          return b.eventCount - a.eventCount;
+        });
+    });
+  },
+
+  async setCreatorPublishPermission(schoolId: string, userId: string, enabled: boolean): Promise<void> {
+    return await withAuthorizedUserRequest(async (accessToken) => {
+      await assertAssignedSchool(accessToken, schoolId);
+      const me = await getMyUserId(accessToken);
+      if (enabled) {
+        await supabaseRestRequest('/event_publish_permissions?on_conflict=user_id', {
+          method: 'POST',
+          accessToken,
+          headers: {
+            Prefer: 'resolution=merge-duplicates,return=minimal',
+          },
+          body: {
+            user_id: userId,
+            granted_by_school_id: schoolId,
+            granted_by_user_id: me,
+          },
+        });
+        return;
+      }
+
+      await supabaseRestRequest(
+        `/event_publish_permissions?user_id=eq.${encodeURIComponent(userId)}`,
+        {
+          method: 'DELETE',
+          accessToken,
+          headers: { Prefer: 'return=minimal' },
+        },
+      );
+    });
+  },
+
+  async approveEvent(schoolId: string, eventId: string): Promise<void> {
+    return await withAuthorizedUserRequest(async (accessToken) => {
+      await assertAssignedSchool(accessToken, schoolId);
+      const me = await getMyUserId(accessToken);
+      const now = new Date().toISOString();
+      await supabaseRestRequest(
+        `/school_events?id=eq.${encodeURIComponent(eventId)}&school_id=eq.${encodeURIComponent(schoolId)}`,
+        {
+          method: 'PATCH',
+          accessToken,
+          headers: { Prefer: 'return=minimal' },
+          body: {
+            publish_status: 'approved',
+            published_at: now,
+            approved_at: now,
+            approved_by: me,
+            rejected_at: null,
+            rejected_by: null,
+            rejection_reason: null,
+          },
+        },
+      );
+    });
+  },
+
+  async rejectEvent(schoolId: string, eventId: string, reason: string): Promise<void> {
+    return await withAuthorizedUserRequest(async (accessToken) => {
+      await assertAssignedSchool(accessToken, schoolId);
+      const me = await getMyUserId(accessToken);
+      await supabaseRestRequest(
+        `/school_events?id=eq.${encodeURIComponent(eventId)}&school_id=eq.${encodeURIComponent(schoolId)}`,
+        {
+          method: 'PATCH',
+          accessToken,
+          headers: { Prefer: 'return=minimal' },
+          body: {
+            publish_status: 'rejected',
+            published_at: null,
+            approved_at: null,
+            approved_by: null,
+            rejected_at: new Date().toISOString(),
+            rejected_by: me,
+            rejection_reason: reason.trim() || null,
+          },
+        },
+      );
     });
   },
 };
