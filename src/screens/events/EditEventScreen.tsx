@@ -428,7 +428,7 @@ export const EditEventScreen: React.FC = () => {
         if (!cancelled) {
           setSchools(rows);
           setSelectedSchoolId((prev) => {
-            if (preselectedSchoolId && rows.some((row) => row.id === preselectedSchoolId)) {
+            if (preselectedSchoolId) {
               return preselectedSchoolId;
             }
             return prev && rows.some((row) => row.id === prev) ? prev : null;

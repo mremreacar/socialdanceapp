@@ -50,6 +50,8 @@ const defaultSchool = {
   ],
 };
 
+const EVENTS_PAGE_SIZE = 6;
+
 type SchoolDetailsVm = typeof defaultSchool & {
   phone?: string;
   website?: string;
@@ -116,6 +118,8 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const [error, setError] = useState<string | null>(null);
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
+  const [eventsHasMore, setEventsHasMore] = useState(false);
+  const [eventsLoadingMore, setEventsLoadingMore] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -146,7 +150,7 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       }
       let eventRows: Awaited<ReturnType<typeof listSchoolEvents>> = [];
       try {
-        eventRows = await listSchoolEvents(route.params.id);
+        eventRows = await listSchoolEvents(route.params.id, EVENTS_PAGE_SIZE + 1);
       } catch (eventError) {
         // If API schema cache is stale, keep school details working and show empty events.
         if (!isMissingSchoolEventsError(eventError)) throw eventError;
@@ -166,9 +170,11 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       const statusText = row.current_status ? String(row.current_status).trim() : '';
       const isOpen = statusText === 'Acik' ? true : statusText === 'Kapali' ? false : undefined;
 
+      const initialEventRows = eventRows.slice(0, EVENTS_PAGE_SIZE);
+      setEventsHasMore(eventRows.length > EVENTS_PAGE_SIZE);
       const schoolEvents =
-        eventRows.length > 0
-          ? eventRows.map((eventRow) => ({
+        initialEventRows.length > 0
+          ? initialEventRows.map((eventRow) => ({
               id: eventRow.id,
               title: eventRow.title,
               date: formatEventDateLabel(eventRow.starts_at),
@@ -203,6 +209,7 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Okul yüklenemedi');
+      setEventsHasMore(false);
       setSchool(null);
     } finally {
       if (!opts?.silent) setLoading(false);
@@ -303,6 +310,38 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
+  const loadMoreEvents = useCallback(async () => {
+    if (eventsLoadingMore || !school || !eventsHasMore) return;
+    setEventsLoadingMore(true);
+    try {
+      const nextRows = await listSchoolEvents(route.params.id, EVENTS_PAGE_SIZE + 1, {
+        offset: school.events.length,
+      });
+      const nextPageRows = nextRows.slice(0, EVENTS_PAGE_SIZE);
+      setSchool((prev) => {
+        if (!prev || nextPageRows.length === 0) return prev;
+        const existingIds = new Set(prev.events.map((event) => event.id));
+        const appendedEvents = nextPageRows
+          .filter((eventRow) => !existingIds.has(eventRow.id))
+          .map((eventRow) => ({
+            id: eventRow.id,
+            title: eventRow.title,
+            date: formatEventDateLabel(eventRow.starts_at),
+          }));
+        if (appendedEvents.length === 0) return prev;
+        return {
+          ...prev,
+          events: [...prev.events, ...appendedEvents],
+        };
+      });
+      setEventsHasMore(nextRows.length > EVENTS_PAGE_SIZE);
+    } catch {
+      Alert.alert('Etkinlikler yüklenemedi', 'Lütfen tekrar deneyin.');
+    } finally {
+      setEventsLoadingMore(false);
+    }
+  }, [eventsHasMore, eventsLoadingMore, route.params.id, school]);
+
   return (
     <Screen edges={[]}>
       {loading ? (
@@ -317,6 +356,8 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             style={{ flex: 1 }}
             contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.lg }}
             showsVerticalScrollIndicator={false}
+            alwaysBounceVertical
+            bounces
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -455,6 +496,16 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                   </TouchableOpacity>
                 ))
               )}
+              {currentSchool.events.length > 0 && eventsHasMore ? (
+                <Button
+                  title={eventsLoadingMore ? 'Yükleniyor...' : 'Daha Fazla Göster'}
+                  onPress={loadMoreEvents}
+                  disabled={eventsLoadingMore}
+                  variant="secondary"
+                  fullWidth
+                  style={{ borderRadius: radius.xl, marginTop: spacing.xs }}
+                />
+              ) : null}
             </View>
           )}
 
@@ -470,8 +521,18 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             </>
           )}
 
-          <View style={{ flex: 1, minHeight: 24 }} />
-          <View style={[styles.bottomBar, { backgroundColor: colors.headerBg, paddingHorizontal: spacing.lg, paddingVertical: spacing.lg }]}>
+          <View style={{ height: spacing.xl }} />
+          <View
+            style={[
+              styles.bottomBar,
+              {
+                backgroundColor: colors.headerBg,
+                paddingHorizontal: spacing.lg,
+                paddingVertical: spacing.lg,
+                marginBottom: spacing.md,
+              },
+            ]}
+          >
             <Button
               title="İletişime Geç"
               onPress={handleContact}

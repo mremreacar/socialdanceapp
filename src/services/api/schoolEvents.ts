@@ -2,7 +2,7 @@ import { ApiError, supabaseAuthRequest, supabaseRestRequest } from './apiClient'
 import { storage } from '../storage';
 import { listAssignedSchoolIdsForUser } from './instructorSchoolAssignments';
 
-export type PublishStatus = 'pending' | 'approved' | 'rejected';
+export type PublishStatus = 'pending' | 'approved' | 'rejected' | 'published';
 
 export type SchoolEventRow = {
   id: string;
@@ -189,7 +189,10 @@ function buildSchoolEventPayload(input: CreateSchoolEventInput): Record<string, 
 }
 
 function buildPublishedEventFilter(includeUnpublished?: boolean): string {
-  return includeUnpublished ? '' : '&publish_status=eq.approved';
+  if (includeUnpublished) return '';
+  // Backward compatibility: some older rows use "published"
+  // instead of "approved", and some legacy rows only have published_at set.
+  return '&or=(publish_status.eq.approved,publish_status.eq.published,and(publish_status.is.null,published_at.not.is.null))';
 }
 
 async function insertEventDanceTypes(eventId: string, danceTypeIds: string[], accessToken: string): Promise<void> {
@@ -336,11 +339,12 @@ function mapCreatorSummary(
 export async function listSchoolEvents(
   schoolId: string,
   limit = 20,
-  opts?: { includeUnpublished?: boolean },
+  opts?: { includeUnpublished?: boolean; offset?: number },
 ): Promise<SchoolEventRow[]> {
   const safeLimit = Math.min(Math.max(limit, 1), 100);
+  const safeOffset = Math.max(opts?.offset ?? 0, 0);
   return await supabaseRestRequest<SchoolEventRow[]>(
-    `/school_events?select=${baseSchoolEventSelect()}&school_id=eq.${encodeURIComponent(schoolId)}${buildPublishedEventFilter(opts?.includeUnpublished)}&order=starts_at.asc&limit=${safeLimit}`,
+    `/school_events?select=${baseSchoolEventSelect()}&school_id=eq.${encodeURIComponent(schoolId)}${buildPublishedEventFilter(opts?.includeUnpublished)}&order=starts_at.asc&limit=${safeLimit}&offset=${safeOffset}`,
     { method: 'GET' },
   );
 }

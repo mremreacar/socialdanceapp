@@ -44,6 +44,19 @@ function getPublishStatusMeta(status: PublishStatus | null | undefined): { label
   return { label: 'Onay Bekliyor', bg: 'rgba(245,158,11,0.16)', fg: '#FCD34D' };
 }
 
+function sortEventsByStartsAt(items: ManagedSchoolEventItem[]): ManagedSchoolEventItem[] {
+  return [...items].sort((a, b) => {
+    const aTime = new Date(a.starts_at).getTime();
+    const bTime = new Date(b.starts_at).getTime();
+
+    if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+    if (Number.isNaN(aTime)) return 1;
+    if (Number.isNaN(bTime)) return -1;
+
+    return aTime - bTime;
+  });
+}
+
 export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) => {
   const { colors, spacing, radius, typography } = useTheme();
   const [activeTab, setActiveTab] = useState<SchoolAdminTabId>('overview');
@@ -109,9 +122,15 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
         applySchool(row);
       }
       setSchoolEvents(
-        (eventRows ?? []).filter((item) => item.school_id === route.params.schoolId && item.event_type !== 'lesson'),
+        sortEventsByStartsAt(
+          (eventRows ?? []).filter((item) => item.school_id === route.params.schoolId && item.event_type !== 'lesson'),
+        ),
       );
-      setSchoolLessons((eventRows ?? []).filter((item) => item.school_id === route.params.schoolId && item.event_type === 'lesson'));
+      setSchoolLessons(
+        sortEventsByStartsAt(
+          (eventRows ?? []).filter((item) => item.school_id === route.params.schoolId && item.event_type === 'lesson'),
+        ),
+      );
       setEventCreators(creatorRows);
     } catch (error: unknown) {
       setSchool(null);
@@ -550,10 +569,8 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
               <Text style={[typography.caption, { color: colors.textTertiary }]}>Henüz etkinlik yok.</Text>
             ) : (
               schoolEvents.map((event) => (
-                <TouchableOpacity
+                <View
                   key={event.id}
-                  activeOpacity={0.85}
-                  onPress={() => navigation.navigate('EventDetails', { id: event.id, includeUnpublished: true })}
                   style={{
                     marginTop: spacing.sm,
                     padding: spacing.md,
@@ -584,7 +601,29 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
                   {event.location?.trim() ? (
                     <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 4 }]}>{event.location.trim()}</Text>
                   ) : null}
-                </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+                    <Button
+                      title="Detay"
+                      size="sm"
+                      variant="outline"
+                      onPress={() => navigation.navigate('EventDetails', { id: event.id, includeUnpublished: true })}
+                      style={{ flex: 1 }}
+                      textStyle={{ color: '#FFFFFF' }}
+                    />
+                    <Button
+                      title="Düzenle"
+                      size="sm"
+                      onPress={() =>
+                        navigation.navigate('EditEvent', {
+                          eventId: event.id,
+                          preselectedSchoolId: route.params.schoolId,
+                          preselectedSchoolName: school.name,
+                        })
+                      }
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                </View>
               ))
             )}
           </View>

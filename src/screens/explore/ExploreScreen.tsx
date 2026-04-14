@@ -114,6 +114,10 @@ function formatEventDateLabel(date: Date): string {
   });
 }
 
+function formatCountPill(value: number): string {
+  return value > 500 ? '500+' : String(value);
+}
+
 export const ExploreScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
@@ -453,6 +457,9 @@ export const ExploreScreen: React.FC = () => {
               <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: 6 }]}>Etkinlikler</Text>
             </View>
             <View style={styles.sectionHeaderRight}>
+              <View style={[styles.countPill, { backgroundColor: 'rgba(238,43,238,0.16)' }]}>
+                <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>{formatCountPill(filteredEvents.length)}</Text>
+              </View>
               {hasMoreEvents ? (
                 <TouchableOpacity onPress={openAllEventsPage} activeOpacity={0.8} style={styles.viewAllButton}>
                   <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>Tümünü Gör</Text>
@@ -510,6 +517,9 @@ export const ExploreScreen: React.FC = () => {
               <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: 6 }]}>Dersler</Text>
             </View>
             <View style={styles.sectionHeaderRight}>
+              <View style={[styles.countPill, { backgroundColor: 'rgba(110,231,183,0.16)' }]}>
+                <Text style={[typography.captionBold, { color: '#6EE7B7' }]}>{formatCountPill(filteredLessons.length)}</Text>
+              </View>
               {hasMoreLessons ? (
                 <TouchableOpacity onPress={openLessonsPage} activeOpacity={0.8} style={styles.viewAllButton}>
                   <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>Tümünü Gör</Text>
@@ -573,6 +583,9 @@ export const ExploreScreen: React.FC = () => {
               <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginLeft: 6 }]}>Okullar</Text>
             </View>
             <View style={styles.sectionHeaderRight}>
+              <View style={[styles.countPill, { backgroundColor: 'rgba(192,132,252,0.16)' }]}>
+                <Text style={[typography.captionBold, { color: '#C084FC' }]}>{formatCountPill(filteredSchools.length)}</Text>
+              </View>
               {hasMoreSchools ? (
                 <TouchableOpacity onPress={openSchoolsPage} activeOpacity={0.8} style={styles.viewAllButton}>
                   <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>Tümünü Gör</Text>
@@ -629,7 +642,7 @@ export const ExploreScreen: React.FC = () => {
                 </View>
                 <View style={styles.sectionHeaderRight}>
                   <View style={[styles.countPill, { backgroundColor: 'rgba(238,43,238,0.16)' }]}>
-                    <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>{filteredInstructors.length}</Text>
+                    <Text style={[typography.captionBold, { color: '#EE2AEE' }]}>{formatCountPill(filteredInstructors.length)}</Text>
                   </View>
                   <TouchableOpacity
                     onPress={() => navigation.navigate('InstructorsList')}
