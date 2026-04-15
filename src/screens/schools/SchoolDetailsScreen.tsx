@@ -475,8 +475,8 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               {currentSchool.events.length === 0 ? (
                 <EmptyState
                   icon="calendar-blank-outline"
-                  title="Etkinlik bulunamadı"
-                  subtitle="Bu okul için henüz etkinlik eklenmemiş."
+                  title="Yaklaşan etkinlik bulunamadı"
+                  subtitle="Bu okul için şu anda gösterilecek etkinlik yok."
                 />
               ) : (
                 currentSchool.events.map((e: (typeof defaultSchool.events)[number]) => (

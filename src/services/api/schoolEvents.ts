@@ -195,6 +195,11 @@ function buildPublishedEventFilter(includeUnpublished?: boolean): string {
   return '&or=(publish_status.eq.approved,publish_status.eq.published,and(publish_status.is.null,published_at.not.is.null))';
 }
 
+function buildUpcomingEventFilter(includePast?: boolean): string {
+  if (includePast) return '';
+  return `&starts_at=gte.${encodeURIComponent(new Date().toISOString())}`;
+}
+
 async function insertEventDanceTypes(eventId: string, danceTypeIds: string[], accessToken: string): Promise<void> {
   const ids = normalizeDanceTypeIds(danceTypeIds);
   if (ids.length === 0) return;
@@ -339,24 +344,24 @@ function mapCreatorSummary(
 export async function listSchoolEvents(
   schoolId: string,
   limit = 20,
-  opts?: { includeUnpublished?: boolean; offset?: number },
+  opts?: { includeUnpublished?: boolean; offset?: number; includePast?: boolean },
 ): Promise<SchoolEventRow[]> {
   const safeLimit = Math.min(Math.max(limit, 1), 100);
   const safeOffset = Math.max(opts?.offset ?? 0, 0);
   return await supabaseRestRequest<SchoolEventRow[]>(
-    `/school_events?select=${baseSchoolEventSelect()}&school_id=eq.${encodeURIComponent(schoolId)}${buildPublishedEventFilter(opts?.includeUnpublished)}&order=starts_at.asc&limit=${safeLimit}&offset=${safeOffset}`,
+    `/school_events?select=${baseSchoolEventSelect()}&school_id=eq.${encodeURIComponent(schoolId)}${buildPublishedEventFilter(opts?.includeUnpublished)}${buildUpcomingEventFilter(opts?.includePast)}&order=starts_at.asc&limit=${safeLimit}&offset=${safeOffset}`,
     { method: 'GET' },
   );
 }
 
 export async function listAllSchoolEvents(
   limit = 100,
-  opts?: { includeUnpublished?: boolean; offset?: number },
+  opts?: { includeUnpublished?: boolean; offset?: number; includePast?: boolean },
 ): Promise<SchoolEventRow[]> {
   const safeLimit = Math.min(Math.max(limit, 1), 200);
   const safeOffset = Math.max(opts?.offset ?? 0, 0);
   return await supabaseRestRequest<SchoolEventRow[]>(
-    `/school_events?select=${baseSchoolEventSelect()}${buildPublishedEventFilter(opts?.includeUnpublished)}&order=starts_at.desc&limit=${safeLimit}&offset=${safeOffset}`,
+    `/school_events?select=${baseSchoolEventSelect()}${buildPublishedEventFilter(opts?.includeUnpublished)}${buildUpcomingEventFilter(opts?.includePast)}&order=starts_at.desc&limit=${safeLimit}&offset=${safeOffset}`,
     { method: 'GET' },
   );
 }

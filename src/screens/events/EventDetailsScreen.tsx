@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Share, Modal, Alert, ActivityIndicator, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Share, Modal, Alert, ActivityIndicator, useWindowDimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
 import { Header } from '../../components/layout/Header';
+import { SearchBar } from '../../components/domain/SearchBar';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import { Avatar } from '../../components/ui/Avatar';
@@ -16,6 +17,7 @@ import { scheduleEventReminder } from '../../services/notifications';
 import { ApiError } from '../../services/api/apiClient';
 import { getSchoolEventDetailsById, type PublishStatus } from '../../services/api/schoolEvents';
 import { schoolEventAttendeesService, type EventAttendee } from '../../services/api/schoolEventAttendees';
+import { followService } from '../../services/api/follows';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'EventDetails'>;
 
@@ -99,10 +101,14 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [leaveModalVisible, setLeaveModalVisible] = useState(false);
   const [friendsModalVisible, setFriendsModalVisible] = useState(false);
+  const [attendeeSearchQuery, setAttendeeSearchQuery] = useState('');
   const [danceTypesExpanded, setDanceTypesExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [heroHeight, setHeroHeight] = useState(280);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
+  const [followBusyIds, setFollowBusyIds] = useState<Set<string>>(new Set());
   const [remoteEvent, setRemoteEvent] = useState<{
     title: string;
     isLesson: boolean;
@@ -181,6 +187,11 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const effectiveRawDate = remoteEvent?.startsAtDate ?? null;
   const isDbEvent = isUuid(route.params.id);
   const attendeeList: EventAttendee[] = dbAttendees ?? [];
+  const filteredAttendeeList = useMemo(() => {
+    const query = attendeeSearchQuery.trim().toLocaleLowerCase('tr-TR');
+    if (!query) return attendeeList;
+    return attendeeList.filter((attendee) => attendee.name.toLocaleLowerCase('tr-TR').includes(query));
+  }, [attendeeList, attendeeSearchQuery]);
   const attendingCount = Math.max(remoteEvent?.attendeeCount ?? 0, attendeeList.length);
   const capacity = remoteEvent?.participantLimit ?? 50;
   const visibleDanceTypes = danceTypesExpanded ? eventDanceTypes : eventDanceTypes.slice(0, 3);
@@ -216,6 +227,68 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       cancelled = true;
     };
   }, [isDbEvent, route.params.id]);
+
+  useEffect(() => {
+    if (!friendsModalVisible) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [me, following] = await Promise.all([
+          schoolEventAttendeesService.getCurrentUserId(),
+          followService.listMyFollowing(),
+        ]);
+        if (cancelled) return;
+        setCurrentUserId(me);
+        setFollowingIds(new Set((following ?? []).map((user) => user.id).filter((id) => id !== me)));
+      } catch {
+        if (!cancelled) {
+          setCurrentUserId(null);
+          setFollowingIds(new Set());
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [friendsModalVisible]);
+
+  useEffect(() => {
+    if (!friendsModalVisible) {
+      setFollowBusyIds(new Set());
+      setAttendeeSearchQuery('');
+    }
+  }, [friendsModalVisible]);
+
+  const handleFollowToggle = async (userId: string) => {
+    if (followBusyIds.has(userId)) return;
+    setFollowBusyIds((prev) => new Set(prev).add(userId));
+    try {
+      const isFollowing = followingIds.has(userId);
+      if (isFollowing) {
+        await followService.unfollowUser(userId);
+        setFollowingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(userId);
+          return next;
+        });
+      } else {
+        await followService.followUser(userId);
+        setFollowingIds((prev) => new Set(prev).add(userId));
+      }
+    } catch (error: unknown) {
+      const message = error instanceof ApiError ? error.message : error instanceof Error ? error.message : 'İşlem tamamlanamadı.';
+      Alert.alert('Takip', message);
+    } finally {
+      setFollowBusyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     setDanceTypesExpanded(false);
@@ -345,6 +418,7 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         visible={friendsModalVisible}
         transparent
         animationType="slide"
+        statusBarTranslucent
         onRequestClose={() => setFriendsModalVisible(false)}
       >
         <View style={styles.friendsModalOverlay}>
@@ -353,38 +427,107 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             activeOpacity={1}
             onPress={() => setFriendsModalVisible(false)}
           />
-          <View style={[styles.friendsModalBox, { backgroundColor: '#2C1C2D', borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl }]}>
-            <Text style={[typography.h4, { color: '#FFFFFF', marginBottom: spacing.md }]}>
-              Katılımcılar
-            </Text>
-            <ScrollView style={{ maxHeight: 320 }}>
-              {attendeeList.map((attendee, index) => {
-                  const name = attendee.name;
-                  return (
-                    <TouchableOpacity
-                      key={attendee.id + index}
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        setFriendsModalVisible(false);
-                        navigation.navigate('UserProfile', { userId: attendee.id, name, avatar: attendee.avatar });
-                      }}
-                      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}
-                    >
-                      <Avatar source={attendee.avatar} size="sm" />
-                      <Text style={[typography.bodySmall, { color: '#FFFFFF', marginLeft: spacing.md }]}>{name}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-            </ScrollView>
-            <Button
-              title="Kapat"
-              variant="secondary"
-              fullWidth
-              size="md"
-              style={{ marginTop: spacing.lg }}
-              onPress={() => setFriendsModalVisible(false)}
-            />
-          </View>
+          <KeyboardAvoidingView
+            style={styles.friendsModalKeyboard}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View style={[styles.friendsModalBox, { backgroundColor: '#2C1C2D', borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl }]}>
+              <View style={styles.friendsModalHeader}>
+                <Text style={[typography.h4, { color: '#FFFFFF' }]}>Katılımcılar</Text>
+                <TouchableOpacity
+                  onPress={() => setFriendsModalVisible(false)}
+                  activeOpacity={0.8}
+                  style={[styles.friendsModalCloseBtn, { borderRadius: radius.full }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Katılımcıları kapat"
+                >
+                  <Icon name="close" size={22} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+              <SearchBar
+                value={attendeeSearchQuery}
+                onChangeText={setAttendeeSearchQuery}
+                placeholder="Katılımcı ara"
+                backgroundColor="#3A2438"
+                style={{ marginBottom: spacing.md }}
+                autoFocus
+              />
+              <ScrollView
+                style={{ maxHeight: 320 }}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="interactive"
+              >
+                {filteredAttendeeList.length > 0 ? (
+                  filteredAttendeeList.map((attendee, index) => {
+                    const name = attendee.name;
+                    const isSelf = currentUserId === attendee.id;
+                    const isFollowing = followingIds.has(attendee.id);
+                    const isBusy = followBusyIds.has(attendee.id);
+                    return (
+                      <View
+                        key={attendee.id + index}
+                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}
+                      >
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            setFriendsModalVisible(false);
+                            navigation.navigate('UserProfile', { userId: attendee.id, name, avatar: attendee.avatar });
+                          }}
+                          style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                        >
+                          <Avatar source={attendee.avatar} size="sm" />
+                          <Text
+                            style={[typography.bodySmall, { color: '#FFFFFF', marginLeft: spacing.md, flex: 1 }]}
+                            numberOfLines={1}
+                          >
+                            {name}
+                          </Text>
+                        </TouchableOpacity>
+                        {isSelf ? (
+                          <View style={[styles.selfBadge, { borderRadius: radius.full }]}>
+                            <Text style={[typography.captionBold, { color: '#D1D5DB' }]}>Sen</Text>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            disabled={isBusy}
+                            onPress={() => void handleFollowToggle(attendee.id)}
+                            style={[
+                              styles.followBtn,
+                              {
+                                backgroundColor: isFollowing ? 'transparent' : colors.primary,
+                                borderWidth: 1,
+                                borderColor: isFollowing ? '#9CA3AF' : colors.primary,
+                                borderRadius: 50,
+                                opacity: isBusy ? 0.65 : 1,
+                              },
+                            ]}
+                          >
+                            {isBusy ? (
+                              <ActivityIndicator color={isFollowing ? '#9CA3AF' : '#FFFFFF'} size="small" />
+                            ) : (
+                              <Text style={[typography.captionBold, { color: isFollowing ? '#9CA3AF' : '#FFFFFF' }]}>
+                                {isFollowing ? 'Takipten Çık' : 'Takip Et'}
+                              </Text>
+                            )}
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    );
+                  })
+                ) : (
+                  <View style={{ paddingVertical: spacing.lg }}>
+                    <EmptyState
+                      icon="account-search-outline"
+                      title="Katılımcı bulunamadı"
+                      subtitle="Aradığın isimle eşleşen bir katılımcı yok."
+                    />
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
       <ScrollView
@@ -411,7 +554,11 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             <Image source={{ uri: eventImage }} style={styles.heroImage} />
           ) : (
             <View style={[styles.heroPlaceholder, { backgroundColor: colors.headerBg }]}>
-              <Icon name="calendar-blank-outline" size={48} color="rgba(255,255,255,0.7)" />
+              <Image
+                source={require('../../../assets/social_dance.png')}
+                style={styles.heroLogo}
+                contentFit="contain"
+              />
             </View>
           )}
           <View style={[styles.heroGradient, { backgroundColor: 'transparent' }]} />
@@ -614,8 +761,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  heroLogo: {
+    width: '86%',
+    aspectRatio: 1764 / 829,
+    maxWidth: 320,
+    maxHeight: 150,
+    alignSelf: 'center',
+  },
   heroGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 80 },
   headerRightStack: { alignItems: 'center' },
+  followBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 108,
+    height: 34,
+  },
+  selfBadge: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    width: 108,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   headerOverlayBtn: {
     width: 40,
     height: 40,
@@ -694,6 +866,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
   },
+  friendsModalKeyboard: {
+    width: '100%',
+    justifyContent: 'flex-end',
+  },
   friendsModalBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -701,5 +877,18 @@ const styles = StyleSheet.create({
   friendsModalBox: {
     width: '100%',
     padding: 20,
+  },
+  friendsModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  friendsModalCloseBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
 });
