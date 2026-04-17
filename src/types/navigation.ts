@@ -45,10 +45,6 @@ export type MainStackParamList = {
     conversationId?: string;
   };
   NewChat: undefined;
-  Marketplace: undefined;
-  Cart: undefined;
-  AddProduct: { productId?: string };
-  ProductDetail: { id: string };
   Settings: undefined;
   EditProfile: undefined;
   Notifications: undefined;
@@ -70,6 +66,7 @@ export type MainStackParamList = {
   UserPanel: undefined;
   InstructorsList: undefined;
   InstructorOnboarding: undefined;
+  InstructorSchoolPanel: undefined;
   Lessons: undefined;
 };
 

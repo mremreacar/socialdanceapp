@@ -31,6 +31,27 @@ import { addFavoriteSchool, isSchoolFavorited, removeFavoriteSchool } from '../.
 
 type Props = NativeStackScreenProps<MainStackParamList, 'SchoolDetails'>;
 
+type SchoolDetailsClassItem = {
+  id: string;
+  title: string;
+  time: string;
+  day: string;
+  level: string;
+};
+
+type SchoolDetailsEventItem = {
+  id: string;
+  title: string;
+  date: string;
+  eventType: string | null;
+};
+
+type SchoolDetailsLessonItem = {
+  id: string;
+  title: string;
+  date: string;
+};
+
 const defaultSchool = {
   id: '1',
   name: 'Salsa Academy Istanbul',
@@ -45,18 +66,29 @@ const defaultSchool = {
     { id: 'c1', title: 'Başlangıç Salsa', time: '19:00', day: 'Pazartesi', level: 'Başlangıç' },
     { id: 'c2', title: 'Orta Seviye Bachata', time: '20:30', day: 'Çarşamba', level: 'Orta' },
   ],
+  lessonPrograms: [],
   events: [
-    { id: 'e1', title: 'Latin Night', date: 'Cumartesi, 22:00' },
+    { id: 'e1', title: 'Latin Night', date: 'Cumartesi, 22:00', eventType: 'event' as const },
   ],
 };
 
 const EVENTS_PAGE_SIZE = 6;
 
-type SchoolDetailsVm = typeof defaultSchool & {
+type SchoolDetailsVm = {
+  id: string;
+  name: string;
+  location: string;
+  image: string;
+  rating: number;
+  ratingCount: number;
+  description: string;
   phone?: string;
   website?: string;
   isOpen?: boolean;
   statusLabel?: string;
+  classes: SchoolDetailsClassItem[];
+  lessonPrograms: SchoolDetailsLessonItem[];
+  events: SchoolDetailsEventItem[];
 };
 
 function isMissingSchoolEventsError(error: unknown): boolean {
@@ -150,7 +182,7 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       }
       let eventRows: Awaited<ReturnType<typeof listSchoolEvents>> = [];
       try {
-        eventRows = await listSchoolEvents(route.params.id, EVENTS_PAGE_SIZE + 1);
+        eventRows = await listSchoolEvents(route.params.id, 100);
       } catch (eventError) {
         // If API schema cache is stale, keep school details working and show empty events.
         if (!isMissingSchoolEventsError(eventError)) throw eventError;
@@ -170,16 +202,23 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       const statusText = row.current_status ? String(row.current_status).trim() : '';
       const isOpen = statusText === 'Acik' ? true : statusText === 'Kapali' ? false : undefined;
 
-      const initialEventRows = eventRows.slice(0, EVENTS_PAGE_SIZE);
-      setEventsHasMore(eventRows.length > EVENTS_PAGE_SIZE);
-      const schoolEvents =
-        initialEventRows.length > 0
-          ? initialEventRows.map((eventRow) => ({
-              id: eventRow.id,
-              title: eventRow.title,
-              date: formatEventDateLabel(eventRow.starts_at),
-            }))
-          : [];
+      const normalizedEventRows = eventRows.map((eventRow) => ({
+        id: eventRow.id,
+        title: eventRow.title,
+        date: formatEventDateLabel(eventRow.starts_at),
+        eventType: (eventRow.event_type ?? '').trim().toLowerCase() || null,
+      }));
+      const lessonPrograms: SchoolDetailsLessonItem[] = normalizedEventRows
+        .filter((eventItem) => eventItem.eventType === 'lesson')
+        .map((eventItem) => ({
+          id: eventItem.id,
+          title: eventItem.title,
+          date: eventItem.date,
+        }));
+      const schoolEvents: SchoolDetailsEventItem[] = normalizedEventRows
+        .filter((eventItem) => eventItem.eventType !== 'lesson')
+        .slice(0, EVENTS_PAGE_SIZE);
+      setEventsHasMore(normalizedEventRows.filter((eventItem) => eventItem.eventType !== 'lesson').length > EVENTS_PAGE_SIZE);
       const schoolClasses =
         classRows.length > 0
           ? classRows.map((classRow) => ({
@@ -205,6 +244,7 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         isOpen,
         statusLabel: statusText || undefined,
         classes: schoolClasses,
+        lessonPrograms,
         events: schoolEvents,
       });
     } catch (e) {
@@ -230,7 +270,16 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [loadSchool, refreshing]);
 
-  const currentSchool: SchoolDetailsVm = useMemo(() => school ?? defaultSchool, [school]);
+  const currentSchool: SchoolDetailsVm = useMemo(
+    () => ({
+      ...defaultSchool,
+      ...(school ?? {}),
+      classes: school?.classes ?? defaultSchool.classes,
+      lessonPrograms: school?.lessonPrograms ?? defaultSchool.lessonPrograms,
+      events: school?.events ?? defaultSchool.events,
+    }),
+    [school],
+  );
   const hasSchoolImage = Boolean(currentSchool.image?.trim());
   const heroImageSource =
     hasSchoolImage && !imageLoadFailed
@@ -327,7 +376,9 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             id: eventRow.id,
             title: eventRow.title,
             date: formatEventDateLabel(eventRow.starts_at),
-          }));
+            eventType: (eventRow.event_type ?? '').trim().toLowerCase() || null,
+          }))
+          .filter((eventItem) => eventItem.eventType !== 'lesson');
         if (appendedEvents.length === 0) return prev;
         return {
           ...prev,
@@ -440,32 +491,51 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
 
           {activeTab === 'schedule' && (
             <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
-              {currentSchool.classes.length === 0 ? (
+              {currentSchool.classes.length === 0 && currentSchool.lessonPrograms.length === 0 ? (
                 <EmptyState
                   icon="calendar-clock"
                   title="Ders programı bulunamadı"
-                  subtitle="Bu okul için henüz ders programı eklenmemiş."
+                  subtitle="Bu okul için henüz ders programı eklenmemiştir."
                 />
               ) : (
-                currentSchool.classes.map((c: (typeof defaultSchool.classes)[number]) => (
-                  <TouchableOpacity
-                    key={c.id}
-                    onPress={() => navigation.navigate('ClassDetails', { id: c.id })}
-                    activeOpacity={0.8}
-                    style={[styles.cardRow, { backgroundColor: '#311831', borderRadius: radius.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: spacing.lg }]}
-                  >
-                    <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
-                      <Icon name="calendar-clock" size={18} color={colors.primary} />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: spacing.md }}>
-                      <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{c.title}</Text>
-                      <Text style={[typography.caption, { color: 'rgba(255,255,255,0.7)' }]}>
-                        {c.day} • {c.time} • {c.level}
-                      </Text>
-                    </View>
-                    <Icon name="chevron-right" size={20} color="#9CA3AF" />
-                  </TouchableOpacity>
-                ))
+                <>
+                  {currentSchool.classes.map((c: SchoolDetailsClassItem) => (
+                    <TouchableOpacity
+                      key={c.id}
+                      onPress={() => navigation.navigate('ClassDetails', { id: c.id })}
+                      activeOpacity={0.8}
+                      style={[styles.cardRow, { backgroundColor: '#311831', borderRadius: radius.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: spacing.lg }]}
+                    >
+                      <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
+                        <Icon name="calendar-clock" size={18} color={colors.primary} />
+                      </View>
+                      <View style={{ flex: 1, marginLeft: spacing.md }}>
+                        <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{c.title}</Text>
+                        <Text style={[typography.caption, { color: 'rgba(255,255,255,0.7)' }]}>
+                          {c.day} • {c.time} • {c.level}
+                        </Text>
+                      </View>
+                      <Icon name="chevron-right" size={20} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  ))}
+                  {currentSchool.lessonPrograms.map((lessonItem) => (
+                    <TouchableOpacity
+                      key={lessonItem.id}
+                      onPress={() => navigation.navigate('ClassDetails', { id: lessonItem.id })}
+                      activeOpacity={0.8}
+                      style={[styles.cardRow, { backgroundColor: '#311831', borderRadius: radius.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: spacing.lg }]}
+                    >
+                      <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>
+                        <Icon name="school-outline" size={18} color={colors.primary} />
+                      </View>
+                      <View style={{ flex: 1, marginLeft: spacing.md }}>
+                        <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{lessonItem.title}</Text>
+                        <Text style={[typography.caption, { color: 'rgba(255,255,255,0.7)' }]}>{lessonItem.date}</Text>
+                      </View>
+                      <Icon name="chevron-right" size={20} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  ))}
+                </>
               )}
             </View>
           )}
@@ -479,11 +549,15 @@ export const SchoolDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                   subtitle="Bu okul için şu anda gösterilecek etkinlik yok."
                 />
               ) : (
-                currentSchool.events.map((e: (typeof defaultSchool.events)[number]) => (
+                currentSchool.events.map((e: SchoolDetailsEventItem) => (
                   <TouchableOpacity
                     key={e.id}
                     activeOpacity={0.8}
-                    onPress={() => navigation.navigate('EventDetails', { id: e.id })}
+                    onPress={() =>
+                      e.eventType === 'lesson'
+                        ? navigation.navigate('ClassDetails', { id: e.id })
+                        : navigation.navigate('EventDetails', { id: e.id })
+                    }
                     style={[styles.cardRow, { backgroundColor: '#311831', borderRadius: radius.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: spacing.lg }]}
                   >
                     <View style={[styles.iconBox, { backgroundColor: '#4B154B', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 100 }]}>

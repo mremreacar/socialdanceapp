@@ -14,10 +14,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../../types/navigation';
 import { ApiError, hasSupabaseConfig } from '../../services/api/apiClient';
 import { listAllSchoolEvents } from '../../services/api/schoolEvents';
+import { listSchools, type SchoolRow } from '../../services/api/schools';
 import { schoolEventAttendeesService } from '../../services/api/schoolEventAttendees';
 import { storage } from '../../services/storage';
 import type { MyEventCardData } from '../../components/domain/MyEventCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getDistanceKm, useLocation } from '../../hooks/useLocation';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 type EventTimeFilter = 'Tümü' | 'Bugün' | 'Bu Hafta' | 'Bu Ay';
@@ -27,6 +29,8 @@ type EventListItem = MyEventCardData & {
   entityId: string;
   rawDate: Date;
   city: string | null;
+  latitude?: number;
+  longitude?: number;
 };
 
 const timeFilters: EventTimeFilter[] = ['Tümü', 'Bugün', 'Bu Hafta', 'Bu Ay'];
@@ -40,10 +44,30 @@ function toObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
+function toCoordinate(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value.trim().replace(',', '.'));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function extractCoordinatesFromLocationPlace(locationPlace: unknown): { latitude?: number; longitude?: number } {
+  const place = toObject(locationPlace);
+  if (!place) return {};
+
+  const latitude = toCoordinate(place.latitude) ?? toCoordinate(place.lat) ?? toCoordinate(place.y);
+  const longitude = toCoordinate(place.longitude) ?? toCoordinate(place.lng) ?? toCoordinate(place.lon) ?? toCoordinate(place.x);
+
+  return { latitude, longitude };
+}
+
 export const MyEventsScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const { colors, spacing, typography } = useTheme();
   const insets = useSafeAreaInsets();
+  const { coords: userCoords } = useLocation();
   const [events, setEvents] = useState<EventListItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(() => new Set());
@@ -89,13 +113,28 @@ export const MyEventsScreen: React.FC = () => {
   };
 
   const loadEvents = useCallback(async () => {
-    const eventRows = await listAllSchoolEvents(100);
+    const schoolPromise = hasSupabaseConfig()
+      ? listSchools({ limit: 200 }).catch(() => [] as SchoolRow[])
+      : Promise.resolve([] as SchoolRow[]);
+
+    const [eventRows, schoolRows] = await Promise.all([listAllSchoolEvents(100), schoolPromise]);
+    const schoolCoordinateById = new Map(
+      schoolRows.map((row) => [
+        row.id,
+        {
+          latitude: toCoordinate(row.latitude),
+          longitude: toCoordinate(row.longitude),
+        },
+      ]),
+    );
     const mappedEvents = eventRows
       .filter((row) => (row.event_type ?? '').trim().toLowerCase() !== 'lesson')
       .map((row) => {
         const startsAt = new Date(row.starts_at);
         if (Number.isNaN(startsAt.getTime())) return null;
         const locationPlace = toObject(row.location_place);
+        const ownCoordinates = extractCoordinatesFromLocationPlace(row.location_place);
+        const schoolCoordinates = row.school_id ? schoolCoordinateById.get(row.school_id) : undefined;
         const city =
           (row.city ?? '').trim() ||
           (typeof locationPlace?.city === 'string' && locationPlace.city.trim() ? locationPlace.city.trim() : null);
@@ -121,10 +160,12 @@ export const MyEventsScreen: React.FC = () => {
           isDanceStar: false,
           rawDate: startsAt,
           city,
+          latitude: ownCoordinates.latitude ?? schoolCoordinates?.latitude,
+          longitude: ownCoordinates.longitude ?? schoolCoordinates?.longitude,
         };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null)
-      .sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime());
+      .sort((a, b) => a.rawDate.getTime() - b.rawDate.getTime());
 
     setEvents(mappedEvents);
 
@@ -172,7 +213,7 @@ export const MyEventsScreen: React.FC = () => {
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const normalizedQuery = normalizeText(searchQuery);
 
-    return events.filter((event) => {
+    const list = events.filter((event) => {
       const eventDay = new Date(event.rawDate.getFullYear(), event.rawDate.getMonth(), event.rawDate.getDate());
       if (activeTimeFilter === 'Bugün' && eventDay.getTime() !== startOfToday.getTime()) return false;
       if (activeTimeFilter === 'Bu Hafta') {
@@ -193,7 +234,29 @@ export const MyEventsScreen: React.FC = () => {
       }
       return true;
     });
-  }, [activeCityFilter, activeReservationFilter, activeTimeFilter, events, joinedEventIds, searchQuery]);
+
+    if (!userCoords) {
+      return list.sort((a, b) => a.rawDate.getTime() - b.rawDate.getTime());
+    }
+
+    return list.sort((a, b) => {
+      const distanceA =
+        a.latitude != null && a.longitude != null
+          ? getDistanceKm(userCoords.latitude, userCoords.longitude, a.latitude, a.longitude)
+          : null;
+      const distanceB =
+        b.latitude != null && b.longitude != null
+          ? getDistanceKm(userCoords.latitude, userCoords.longitude, b.latitude, b.longitude)
+          : null;
+
+      if (distanceA != null && distanceB != null && distanceA !== distanceB) {
+        return distanceA - distanceB;
+      }
+      if (distanceA != null && distanceB == null) return -1;
+      if (distanceA == null && distanceB != null) return 1;
+      return a.rawDate.getTime() - b.rawDate.getTime();
+    });
+  }, [activeCityFilter, activeReservationFilter, activeTimeFilter, events, joinedEventIds, searchQuery, userCoords]);
 
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
@@ -307,6 +370,10 @@ export const MyEventsScreen: React.FC = () => {
                     attendees: event.attendees,
                     attendeeAvatars: event.attendeeAvatars,
                     isDanceStar: event.isDanceStar,
+                    distance:
+                      userCoords && event.latitude != null && event.longitude != null
+                        ? `${getDistanceKm(userCoords.latitude, userCoords.longitude, event.latitude, event.longitude)} km`
+                        : undefined,
                   }}
                   onPress={() => navigation.navigate('EventDetails', { id: event.entityId, fromFavorites: true })}
                   onFavoritePress={() => toggleFavorite(String(event.id))}

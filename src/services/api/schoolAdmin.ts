@@ -157,14 +157,17 @@ async function uploadSchoolImageIfNeeded(
   fallbackImageUrl?: string | null,
 ): Promise<string | null> {
   if (imageUri === undefined) return fallbackImageUrl?.trim() || null;
-  if (imageUri === null || imageUri.trim() === '') return null;
-  if (!isLocalAssetUri(imageUri)) return imageUri.trim();
+  if (imageUri === null) return null;
 
-  const extension = guessFileExtension(imageUri);
+  const normalizedImageUri = imageUri.trim();
+  if (normalizedImageUri === '') return null;
+  if (!isLocalAssetUri(normalizedImageUri)) return normalizedImageUri;
+
+  const extension = guessFileExtension(normalizedImageUri);
   const objectPath = `${userId}/schools/${schoolId}/cover.${extension}`;
   const contentType = guessMimeType(extension);
 
-  const fileResponse = await fetch(imageUri);
+  const fileResponse = await fetch(normalizedImageUri);
   const fileBlob = await fileResponse.blob();
 
   try {

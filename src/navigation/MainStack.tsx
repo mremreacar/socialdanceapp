@@ -12,10 +12,6 @@ import { EditClassScreen } from '../screens/dance/EditClassScreen';
 import { ChatListScreen } from '../screens/chat/ChatListScreen';
 import { ChatDetailScreen } from '../screens/chat/ChatDetailScreen';
 import { NewChatScreen } from '../screens/chat/NewChatScreen';
-import { MarketplaceScreen } from '../screens/marketplace/MarketplaceScreen';
-import { CartScreen } from '../screens/marketplace/CartScreen';
-import { AddProductScreen } from '../screens/marketplace/AddProductScreen';
-import { ProductDetailScreen } from '../screens/marketplace/ProductDetailScreen';
 import { SettingsScreen } from '../screens/social/SettingsScreen';
 import { EditProfileScreen } from '../screens/social/EditProfileScreen';
 import { NotificationsScreen } from '../screens/social/NotificationsScreen';
@@ -31,6 +27,7 @@ import { FavoritesHubScreen } from '../screens/social/FavoritesHubScreen';
 import { UserPanelScreen } from '../screens/social/UserPanelScreen';
 import { LessonsScreen } from '../screens/social/LessonsScreen';
 import { InstructorOnboardingScreen } from '../screens/instructor/InstructorOnboardingScreen';
+import { InstructorSchoolPanelScreen } from '../screens/instructor/InstructorSchoolPanelScreen';
 import { InstructorsListScreen } from '../screens/explore/InstructorsListScreen';
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -51,10 +48,6 @@ export const MainStack: React.FC = () => {
       <Stack.Screen name="ChatList" component={ChatListScreen} />
       <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
       <Stack.Screen name="NewChat" component={NewChatScreen} />
-      <Stack.Screen name="Marketplace" component={MarketplaceScreen} />
-      <Stack.Screen name="Cart" component={CartScreen} />
-      <Stack.Screen name="AddProduct" component={AddProductScreen} />
-      <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
@@ -69,6 +62,7 @@ export const MainStack: React.FC = () => {
       <Stack.Screen name="Lessons" component={LessonsScreen} />
       <Stack.Screen name="InstructorsList" component={InstructorsListScreen} />
       <Stack.Screen name="InstructorOnboarding" component={InstructorOnboardingScreen} />
+      <Stack.Screen name="InstructorSchoolPanel" component={InstructorSchoolPanelScreen} />
     </Stack.Navigator>
   );
 };

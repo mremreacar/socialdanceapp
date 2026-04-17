@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Keyboard, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -8,25 +8,35 @@ import { Header } from '../../components/layout/Header';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { ConfirmModal } from '../../components/feedback/ConfirmModal';
+import { LessonDateTimeField } from '../../components/instructor/LessonDateTimeField';
+import { Chip } from '../../components/ui/Chip';
 import { TabSwitch } from '../../components/domain/TabSwitch';
+import { Toggle } from '../../components/ui/Toggle';
 import { MainStackParamList } from '../../types/navigation';
 import { useTheme } from '../../theme';
+import { instructorLessonsService, parseLessonStartsAtToIso, parseTlToCents } from '../../services/api/instructorLessons';
 import { schoolAdminService, type ManagedSchoolModel } from '../../services/api/schoolAdmin';
+import { createSchoolEvent } from '../../services/api/schoolEvents';
 import {
   instructorSchoolEventsService,
-  schoolEventModerationService,
   type ManagedSchoolEventItem,
   type PublishStatus,
-  type SchoolEventCreatorSummary,
 } from '../../services/api/schoolEvents';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'SchoolAdminPanel'>;
-type SchoolAdminTabId = 'overview' | 'location' | 'contact' | 'lessons' | 'events';
+type SchoolAdminTabId = 'overview' | 'locationContact' | 'lessons' | 'events';
+const LESSON_LEVELS = ['Başlangıç', 'Orta', 'İleri'] as const;
+const LESSON_FORMAT_OPTIONS = ['Özel ders', 'Grup dersi'] as const;
+const LESSON_DELIVERY_OPTIONS = ['Online', 'Yüz yüze'] as const;
+const LESSON_CURRENCIES = [
+  { code: 'TRY', label: 'TL' },
+  { code: 'USD', label: 'USD' },
+  { code: 'EUR', label: 'EUR' },
+] as const;
 
 const SCHOOL_ADMIN_TABS: { id: SchoolAdminTabId; label: string }[] = [
   { id: 'overview', label: 'Genel' },
-  { id: 'location', label: 'Konum' },
-  { id: 'contact', label: 'İletişim' },
+  { id: 'locationContact', label: 'Okul Bilgileri' },
   { id: 'lessons', label: 'Dersler' },
   { id: 'events', label: 'Etkinlikler' },
 ];
@@ -36,6 +46,13 @@ function parseOptionalFloat(raw: string): number | null {
   if (!normalized) return null;
   const value = Number(normalized);
   return Number.isFinite(value) ? value : null;
+}
+
+function parseParticipantLimit(raw: string): number | null {
+  const digits = raw.replace(/[^\d]/g, '');
+  if (!digits) return null;
+  const value = Number.parseInt(digits, 10);
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function getPublishStatusMeta(status: PublishStatus | null | undefined): { label: string; bg: string; fg: string } {
@@ -63,15 +80,12 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
   const [school, setSchool] = useState<ManagedSchoolModel | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [successModal, setSuccessModal] = useState<string | null>(null);
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [lessonsSheetVisible, setLessonsSheetVisible] = useState(false);
+  const [schoolEventsSheetVisible, setSchoolEventsSheetVisible] = useState(false);
   const [schoolEvents, setSchoolEvents] = useState<ManagedSchoolEventItem[]>([]);
   const [schoolLessons, setSchoolLessons] = useState<ManagedSchoolEventItem[]>([]);
-  const [eventCreators, setEventCreators] = useState<SchoolEventCreatorSummary[]>([]);
-  const [eventActionLoadingId, setEventActionLoadingId] = useState<string | null>(null);
-  const [permissionLoadingUserId, setPermissionLoadingUserId] = useState<string | null>(null);
 
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
@@ -86,6 +100,27 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
   const [imageUrl, setImageUrl] = useState('');
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [lessonTitle, setLessonTitle] = useState('');
+  const [lessonDescription, setLessonDescription] = useState('');
+  const [lessonLocation, setLessonLocation] = useState('');
+  const [lessonCity, setLessonCity] = useState('');
+  const [lessonStartsAt, setLessonStartsAt] = useState<Date | null>(null);
+  const [lessonPriceText, setLessonPriceText] = useState('');
+  const [lessonParticipantLimitText, setLessonParticipantLimitText] = useState('');
+  const [lessonLevel, setLessonLevel] = useState<(typeof LESSON_LEVELS)[number]>('Başlangıç');
+  const [lessonFormat, setLessonFormat] = useState<(typeof LESSON_FORMAT_OPTIONS)[number]>('Grup dersi');
+  const [lessonDelivery, setLessonDelivery] = useState<(typeof LESSON_DELIVERY_OPTIONS)[number]>('Yüz yüze');
+  const [lessonCurrency, setLessonCurrency] = useState<string>('TRY');
+  const [lessonPublished, setLessonPublished] = useState(true);
+  const [lessonSaving, setLessonSaving] = useState(false);
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventDescription, setEventDescription] = useState('');
+  const [eventLocation, setEventLocation] = useState('');
+  const [eventCity, setEventCity] = useState('');
+  const [eventStartsAt, setEventStartsAt] = useState<Date | null>(null);
+  const [eventParticipantLimitText, setEventParticipantLimitText] = useState('');
+  const [eventPriceText, setEventPriceText] = useState('');
+  const [eventSaving, setEventSaving] = useState(false);
 
   const applySchool = useCallback((row: ManagedSchoolModel) => {
     setSchool(row);
@@ -107,14 +142,12 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
     setLoading(true);
     setErrorBanner(null);
     try {
-      const [row, eventRows, creatorRows] = await Promise.all([
+      const [row, eventRows] = await Promise.all([
         schoolAdminService.getManagedSchool(route.params.schoolId),
         instructorSchoolEventsService.listMine().catch(() => []),
-        schoolEventModerationService.listCreatorsForSchool(route.params.schoolId).catch(() => []),
       ]);
       if (!row) {
         setSchool(null);
-        setEventCreators([]);
         setSchoolEvents([]);
         setSchoolLessons([]);
         setErrorBanner('Okul bulunamadı.');
@@ -131,10 +164,8 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
           (eventRows ?? []).filter((item) => item.school_id === route.params.schoolId && item.event_type === 'lesson'),
         ),
       );
-      setEventCreators(creatorRows);
     } catch (error: unknown) {
       setSchool(null);
-      setEventCreators([]);
       setSchoolEvents([]);
       setSchoolLessons([]);
       setErrorBanner(error instanceof Error ? error.message : 'Okul paneli yüklenemedi.');
@@ -157,20 +188,10 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
     () => 'Bu panel atandığın okulun bilgilerini güncellemen, düzenlemen ve silmen için açılır.',
     [],
   );
-  const moderationQueue = useMemo(
-    () =>
-      schoolEvents
-        .filter((item) => item.publish_status !== 'approved')
-        .sort((a, b) => {
-          if (a.publish_status === b.publish_status) return b.starts_at.localeCompare(a.starts_at);
-          if (a.publish_status === 'pending') return -1;
-          if (b.publish_status === 'pending') return 1;
-          return b.starts_at.localeCompare(a.starts_at);
-        }),
-    [schoolEvents],
-  );
-
   const displayImageUri = selectedImageUri?.trim() || imageUrl.trim();
+  const lessonSelectedParticipantLimit =
+    lessonFormat === 'Özel ders' ? 1 : parseParticipantLimit(lessonParticipantLimitText);
+  const eventSelectedParticipantLimit = parseParticipantLimit(eventParticipantLimitText);
 
   const formatEventDateLabel = useCallback((startsAt: string) => {
     const date = new Date(startsAt);
@@ -214,55 +235,155 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
     }
   };
 
-  const handleApproveEvent = useCallback(async (eventId: string) => {
-    setEventActionLoadingId(eventId);
-    setErrorBanner(null);
-    try {
-      await schoolEventModerationService.approveEvent(route.params.schoolId, eventId);
-      setSuccessModal('Etkinlik onaylandı ve yayına alındı.');
-      await load();
-    } catch (error) {
-      setErrorBanner(error instanceof Error ? error.message : 'Etkinlik onaylanamadı.');
-    } finally {
-      setEventActionLoadingId((current) => (current === eventId ? null : current));
-    }
-  }, [load, route.params.schoolId]);
+  const resetLessonCreateForm = useCallback(() => {
+    setLessonTitle('');
+    setLessonDescription('');
+    setLessonLocation('');
+    setLessonCity(school?.city ?? '');
+    setLessonStartsAt(null);
+    setLessonPriceText('');
+    setLessonParticipantLimitText('');
+    setLessonLevel('Başlangıç');
+    setLessonFormat('Grup dersi');
+    setLessonDelivery('Yüz yüze');
+    setLessonCurrency('TRY');
+    setLessonPublished(true);
+  }, [school?.city]);
 
-  const handleRejectEvent = useCallback(async (eventId: string) => {
-    setEventActionLoadingId(eventId);
-    setErrorBanner(null);
-    try {
-      await schoolEventModerationService.rejectEvent(route.params.schoolId, eventId, 'Etkinlik admin incelemesinde reddedildi.');
-      setSuccessModal('Etkinlik reddedildi. Kullanıcı panelinde red bilgisi görünecek.');
-      await load();
-    } catch (error) {
-      setErrorBanner(error instanceof Error ? error.message : 'Etkinlik reddedilemedi.');
-    } finally {
-      setEventActionLoadingId((current) => (current === eventId ? null : current));
-    }
-  }, [load, route.params.schoolId]);
+  const resetEventCreateForm = useCallback(() => {
+    setEventTitle('');
+    setEventDescription('');
+    setEventLocation('');
+    setEventCity(school?.city ?? '');
+    setEventStartsAt(null);
+    setEventParticipantLimitText('');
+    setEventPriceText('');
+  }, [school?.city]);
 
-  const handleToggleCreatorPermission = useCallback(async (creator: SchoolEventCreatorSummary) => {
-    setPermissionLoadingUserId(creator.userId);
+  const handleCreateLesson = useCallback(async () => {
+    if (!lessonTitle.trim()) {
+      setErrorBanner('Ders adı gerekli.');
+      return;
+    }
+    if (!lessonStartsAt) {
+      setErrorBanner('Ders başlangıç tarihi gerekli.');
+      return;
+    }
+    const participantLimit = lessonSelectedParticipantLimit;
+    if (lessonFormat !== 'Özel ders' && lessonParticipantLimitText.trim() && !participantLimit) {
+      setErrorBanner('Katılımcı sayısı geçerli değil.');
+      return;
+    }
+    const priceCents = parseTlToCents(lessonPriceText);
+    setLessonSaving(true);
     setErrorBanner(null);
     try {
-      await schoolEventModerationService.setCreatorPublishPermission(
-        route.params.schoolId,
-        creator.userId,
-        !creator.canPublishWithoutApproval,
-      );
-      setSuccessModal(
-        creator.canPublishWithoutApproval
-          ? 'Organizatör yetkisi kaldırıldı. Yeni etkinlikler tekrar onaya düşecek.'
-          : 'Kullanıcı organizatör yapıldı. Yeni etkinlikleri onaysız yayınlayabilir.',
-      );
+      await instructorLessonsService.create({
+        title: lessonTitle.trim(),
+        description: lessonDescription.trim(),
+        location: lessonLocation.trim() || null,
+        city: lessonCity.trim() || school?.city || null,
+        priceCents,
+        participantLimit,
+        currency: lessonCurrency,
+        level: lessonLevel,
+        lessonFormat: lessonFormat === 'Özel ders' ? 'private' : 'group',
+        lessonDelivery: lessonDelivery === 'Online' ? 'online' : 'in_person',
+        isPublished: lessonPublished,
+        schoolId: route.params.schoolId,
+        startsAt: parseLessonStartsAtToIso(lessonStartsAt),
+      });
+      setSuccessModal('Ders oluşturuldu.');
+      resetLessonCreateForm();
       await load();
     } catch (error) {
-      setErrorBanner(error instanceof Error ? error.message : 'Kullanıcı yetkisi güncellenemedi.');
+      setErrorBanner(error instanceof Error ? error.message : 'Ders oluşturulamadı.');
     } finally {
-      setPermissionLoadingUserId((current) => (current === creator.userId ? null : current));
+      setLessonSaving(false);
     }
-  }, [load, route.params.schoolId]);
+  }, [
+    lessonCurrency,
+    lessonDelivery,
+    lessonDescription,
+    lessonLevel,
+    lessonLocation,
+    lessonParticipantLimitText,
+    lessonFormat,
+    lessonPriceText,
+    lessonPublished,
+    lessonStartsAt,
+    lessonTitle,
+    lessonSelectedParticipantLimit,
+    load,
+    resetLessonCreateForm,
+    route.params.schoolId,
+  ]);
+
+  const handleCreateEvent = useCallback(async () => {
+    if (!eventTitle.trim()) {
+      setErrorBanner('Etkinlik adı gerekli.');
+      return;
+    }
+    if (!eventDescription.trim()) {
+      setErrorBanner('Etkinlik açıklaması gerekli.');
+      return;
+    }
+    if (!eventStartsAt) {
+      setErrorBanner('Etkinlik başlangıç tarihi gerekli.');
+      return;
+    }
+    if (!eventLocation.trim()) {
+      setErrorBanner('Etkinlik konumu gerekli.');
+      return;
+    }
+    if (!eventParticipantLimitText.trim() || eventSelectedParticipantLimit == null) {
+      setErrorBanner('Geçerli bir katılımcı limiti girin.');
+      return;
+    }
+    const priceCents = parseTlToCents(eventPriceText);
+    setEventSaving(true);
+    setErrorBanner(null);
+    try {
+      await createSchoolEvent({
+        schoolId: route.params.schoolId,
+        title: eventTitle.trim(),
+        startsAt: parseLessonStartsAtToIso(eventStartsAt) ?? eventStartsAt.toISOString(),
+        city: eventCity.trim() || school?.city || null,
+        location: eventLocation.trim(),
+        description: eventDescription.trim(),
+        participantLimit: eventSelectedParticipantLimit,
+        priceAmount: priceCents != null ? priceCents / 100 : null,
+        priceCurrency: 'TRY',
+        eventType: 'event',
+        publishStatus: 'pending',
+        locationPlace: {
+          address: eventLocation.trim(),
+          formatted_address: eventLocation.trim(),
+          city: eventCity.trim() || school?.city || null,
+        },
+      });
+      setSuccessModal('Etkinlik oluşturuldu.');
+      resetEventCreateForm();
+      await load();
+    } catch (error) {
+      setErrorBanner(error instanceof Error ? error.message : 'Etkinlik oluşturulamadı.');
+    } finally {
+      setEventSaving(false);
+    }
+  }, [
+    eventCity,
+    eventDescription,
+    eventLocation,
+    eventParticipantLimitText,
+    eventPriceText,
+    eventStartsAt,
+    eventTitle,
+    eventSelectedParticipantLimit,
+    load,
+    resetEventCreateForm,
+    route.params.schoolId,
+    school?.city,
+  ]);
 
   const renderTabContent = () => {
     if (activeTab === 'overview') {
@@ -325,7 +446,7 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
       );
     }
 
-    if (activeTab === 'location') {
+    if (activeTab === 'locationContact') {
       return (
         <View style={{ gap: spacing.md }}>
           <Input label="Adres" value={address} onChangeText={setAddress} multiline />
@@ -333,6 +454,8 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
           <Input label="İlçe" value={district} onChangeText={setDistrict} />
           <Input label="Enlem" value={latitude} onChangeText={setLatitude} error={errors.latitude} keyboardType="decimal-pad" />
           <Input label="Boylam" value={longitude} onChangeText={setLongitude} error={errors.longitude} keyboardType="decimal-pad" />
+          <Input label="Website" value={website} onChangeText={setWebsite} autoCapitalize="none" />
+          <Input label="Telefon" value={telephone} onChangeText={setTelephone} keyboardType="phone-pad" />
         </View>
       );
     }
@@ -343,60 +466,128 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
           <View style={{ gap: spacing.md }}>
             <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Yeni ders oluştur</Text>
             <Text style={[typography.caption, { color: colors.textTertiary }]}>
-              Mevcut mobil ders oluşturma akışı buradan açılır.
+              Dersi bu ekrandan doğrudan kaydedebilirsin.
             </Text>
+            <Input label="Ders adı" value={lessonTitle} onChangeText={setLessonTitle} required />
+            <LessonDateTimeField
+              label="Başlangıç tarihi ve saati"
+              helperText="Dersin ne zaman başlayacağını seç."
+              emptyText="Tarih seçmek için dokun"
+              value={lessonStartsAt}
+              onChange={setLessonStartsAt}
+            />
+            <Input label="Mekan" value={lessonLocation} onChangeText={setLessonLocation} placeholder="Örn. Kadıköy Dans Stüdyosu" />
+            <Input label="Şehir" value={lessonCity} onChangeText={setLessonCity} placeholder="İsteğe bağlı" />
+            <Input
+              label="Açıklama"
+              value={lessonDescription}
+              onChangeText={setLessonDescription}
+              placeholder="İsteğe bağlı"
+              multiline
+            />
+            <View>
+              <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Seviye</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                {LESSON_LEVELS.map((level) => (
+                  <View key={level} style={{ marginRight: spacing.sm, marginBottom: spacing.sm }}>
+                    <Chip label={level} selected={lessonLevel === level} onPress={() => setLessonLevel(level)} />
+                  </View>
+                ))}
+              </View>
+            </View>
+            <View>
+              <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Ders formatı</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                {LESSON_FORMAT_OPTIONS.map((option) => (
+                  <View key={option} style={{ marginRight: spacing.sm, marginBottom: spacing.sm }}>
+                    <Chip
+                      label={option}
+                      selected={lessonFormat === option}
+                      onPress={() => {
+                        setLessonFormat(option);
+                        if (option === 'Özel ders') {
+                          setLessonParticipantLimitText('1');
+                        } else if (lessonParticipantLimitText.trim() === '1') {
+                          setLessonParticipantLimitText('');
+                        }
+                      }}
+                    />
+                  </View>
+                ))}
+              </View>
+            </View>
+            <View>
+              <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Katılım şekli</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                {LESSON_DELIVERY_OPTIONS.map((option) => (
+                  <View key={option} style={{ marginRight: spacing.sm, marginBottom: spacing.sm }}>
+                    <Chip label={option} selected={lessonDelivery === option} onPress={() => setLessonDelivery(option)} />
+                  </View>
+                ))}
+              </View>
+            </View>
+            <View>
+              <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Para birimi</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                {LESSON_CURRENCIES.map((option) => (
+                  <View key={option.code} style={{ marginRight: spacing.sm, marginBottom: spacing.sm }}>
+                    <Chip label={option.label} selected={lessonCurrency === option.code} onPress={() => setLessonCurrency(option.code)} />
+                  </View>
+                ))}
+              </View>
+            </View>
+            <Input
+              label={`Ücret (${lessonCurrency})`}
+              value={lessonPriceText}
+              onChangeText={setLessonPriceText}
+              placeholder="Boş = ücretsiz"
+              keyboardType="decimal-pad"
+            />
+            <Input
+              label={lessonFormat === 'Özel ders' ? 'Katılımcı sayısı' : 'Katılımcı sayısı'}
+              value={lessonParticipantLimitText}
+              onChangeText={setLessonParticipantLimitText}
+              placeholder={lessonFormat === 'Özel ders' ? '1' : 'Boş = limitsiz'}
+              keyboardType="number-pad"
+              editable={lessonFormat !== 'Özel ders'}
+            />
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginTop: spacing.xs,
+                paddingVertical: spacing.md,
+                paddingHorizontal: spacing.md,
+                backgroundColor: '#241626',
+                borderRadius: radius.lg,
+                borderWidth: 1,
+                borderColor: colors.cardBorder,
+              }}
+            >
+              <View style={{ flex: 1, paddingRight: spacing.md }}>
+                <Text style={[typography.bodyMedium, { color: '#FFFFFF' }]}>Yayında</Text>
+                <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>
+                  Kapalıysa yalnızca sen görürsün.
+                </Text>
+              </View>
+              <Toggle value={lessonPublished} onValueChange={setLessonPublished} />
+            </View>
             <Button
-              title="Ders oluşturma ekranını aç"
-              onPress={() =>
-                navigation.navigate('EditClass', {
-                  preselectedSchoolId: route.params.schoolId,
-                  preselectedSchoolName: school?.name ?? '',
-                })
-              }
+              title="Dersi oluştur"
+              onPress={() => void handleCreateLesson()}
+              loading={lessonSaving}
               fullWidth
             />
           </View>
 
-          <View
-            style={{
-              borderTopWidth: 1,
-              borderTopColor: colors.cardBorder,
-              paddingTop: spacing.lg,
-            }}
-          >
-            <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Bu okuldaki dersler</Text>
-            {schoolLessons.length === 0 ? (
-              <Text style={[typography.caption, { color: colors.textTertiary }]}>Henüz ders yok.</Text>
-            ) : (
-              schoolLessons.map((lesson) => (
-                <TouchableOpacity
-                  key={lesson.id}
-                  activeOpacity={0.85}
-                  onPress={() => navigation.navigate('ClassDetails', { id: lesson.id })}
-                  style={{
-                    marginTop: spacing.sm,
-                    padding: spacing.md,
-                    backgroundColor: '#241626',
-                    borderRadius: radius.xl,
-                    borderWidth: 1,
-                    borderColor: colors.cardBorder,
-                  }}
-                >
-                  <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{lesson.title}</Text>
-                  {lesson.starts_at ? (
-                    <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>
-                      {formatEventDateLabel(lesson.starts_at)}
-                    </Text>
-                  ) : null}
-                  {lesson.location?.trim() ? (
-                    <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 4 }]}>
-                      {lesson.location.trim()}
-                    </Text>
-                  ) : null}
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
+          <Button
+            title={`Bu okuldaki dersler (${schoolLessons.length})`}
+            onPress={() => setLessonsSheetVisible(true)}
+            variant="outline"
+            textStyle={{ color: '#FFFFFF' }}
+            fullWidth
+          />
         </View>
       );
     }
@@ -407,236 +598,70 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
           <View style={{ gap: spacing.md }}>
             <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Yeni etkinlik oluştur</Text>
             <Text style={[typography.caption, { color: colors.textTertiary }]}>
-              Mevcut mobil etkinlik oluşturma akışı bu okul seçili şekilde açılır.
+              Etkinliği bu ekrandan doğrudan kaydedebilirsin.
             </Text>
+            <Input label="Etkinlik adı" value={eventTitle} onChangeText={setEventTitle} required />
+            <LessonDateTimeField
+              label="Başlangıç tarihi ve saati"
+              helperText="Etkinliğin ne zaman başlayacağını seç."
+              emptyText="Tarih seçmek için dokun"
+              value={eventStartsAt}
+              onChange={setEventStartsAt}
+            />
+            <Input
+              label="Konum"
+              value={eventLocation}
+              onChangeText={setEventLocation}
+              placeholder="Örn. Kadıköy Dans Stüdyosu"
+            />
+            <Input
+              label="Şehir"
+              value={eventCity}
+              onChangeText={setEventCity}
+              placeholder="İsteğe bağlı"
+            />
+            <Input
+              label="Açıklama"
+              value={eventDescription}
+              onChangeText={setEventDescription}
+              placeholder="İsteğe bağlı"
+              multiline
+            />
+            <Input
+              label="Katılımcı sayısı"
+              value={eventParticipantLimitText}
+              onChangeText={setEventParticipantLimitText}
+              placeholder="Boş bırakılamaz"
+              keyboardType="number-pad"
+              required
+            />
+            <Input
+              label="Bilet fiyatı (TL)"
+              value={eventPriceText}
+              onChangeText={setEventPriceText}
+              placeholder="Boş = ücretsiz"
+              keyboardType="decimal-pad"
+            />
             <Button
-              title="Etkinlik oluşturma ekranını aç"
-              onPress={() =>
-                navigation.navigate('EditEvent', {
-                  preselectedSchoolId: route.params.schoolId,
-                  preselectedSchoolName: school?.name ?? '',
-                })
-              }
+              title="Etkinliği oluştur"
+              onPress={() => void handleCreateEvent()}
+              loading={eventSaving}
               fullWidth
             />
           </View>
 
-          <View
-            style={{
-              borderTopWidth: 1,
-              borderTopColor: colors.cardBorder,
-              paddingTop: spacing.lg,
-            }}
-          >
-            <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Onay kuyruğu</Text>
-            {moderationQueue.length === 0 ? (
-              <Text style={[typography.caption, { color: colors.textTertiary }]}>Bekleyen veya reddedilmiş etkinlik yok.</Text>
-            ) : (
-              moderationQueue.map((event) => {
-                const statusMeta = getPublishStatusMeta(event.publish_status);
-                return (
-                  <View
-                    key={`review-${event.id}`}
-                    style={{
-                      marginTop: spacing.sm,
-                      padding: spacing.md,
-                      backgroundColor: '#241626',
-                      borderRadius: radius.xl,
-                      borderWidth: 1,
-                      borderColor: colors.cardBorder,
-                    }}
-                  >
-                    <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{event.title}</Text>
-                    <View
-                      style={{
-                        marginTop: spacing.sm,
-                        alignSelf: 'flex-start',
-                        paddingHorizontal: spacing.sm,
-                        paddingVertical: 6,
-                        borderRadius: radius.full,
-                        backgroundColor: statusMeta.bg,
-                      }}
-                    >
-                      <Text style={[typography.captionBold, { color: statusMeta.fg }]}>{statusMeta.label}</Text>
-                    </View>
-                    <Text style={[typography.caption, { color: colors.textTertiary, marginTop: spacing.sm }]}>
-                      {formatEventDateLabel(event.starts_at)}
-                    </Text>
-                    {event.location?.trim() ? (
-                      <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 4 }]}>
-                        {event.location.trim()}
-                      </Text>
-                    ) : null}
-                    {event.rejection_reason?.trim() ? (
-                      <Text style={[typography.caption, { color: '#FCA5A5', marginTop: spacing.sm }]}>
-                        Son red bilgisi: {event.rejection_reason.trim()}
-                      </Text>
-                    ) : null}
-                    <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
-                      <Button
-                        title="Onayla"
-                        size="sm"
-                        onPress={() => void handleApproveEvent(event.id)}
-                        loading={eventActionLoadingId === event.id}
-                        disabled={eventActionLoadingId != null && eventActionLoadingId !== event.id}
-                        style={{ flex: 1 }}
-                      />
-                      <Button
-                        title="Reddet"
-                        size="sm"
-                        variant="danger"
-                        onPress={() => void handleRejectEvent(event.id)}
-                        loading={eventActionLoadingId === event.id}
-                        disabled={eventActionLoadingId != null && eventActionLoadingId !== event.id}
-                        style={{ flex: 1 }}
-                      />
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </View>
-
-          <View
-            style={{
-              borderTopWidth: 1,
-              borderTopColor: colors.cardBorder,
-              paddingTop: spacing.lg,
-            }}
-          >
-            <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Etkinlik oluşturan kullanıcılar</Text>
-            {eventCreators.length === 0 ? (
-              <Text style={[typography.caption, { color: colors.textTertiary }]}>Bu okul için henüz etkinlik oluşturan kullanıcı yok.</Text>
-            ) : (
-              eventCreators.map((creator) => (
-                <View
-                  key={creator.userId}
-                  style={{
-                    marginTop: spacing.sm,
-                    padding: spacing.md,
-                    backgroundColor: '#241626',
-                    borderRadius: radius.xl,
-                    borderWidth: 1,
-                    borderColor: colors.cardBorder,
-                    gap: spacing.sm,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>
-                        {creator.displayName}
-                      </Text>
-                      <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>
-                        {creator.username ? `@${creator.username}` : 'Kullanıcı adı yok'} · {creator.eventCount} etkinlik
-                      </Text>
-                    </View>
-                    <View
-                      style={{
-                        paddingHorizontal: spacing.sm,
-                        paddingVertical: 6,
-                        borderRadius: radius.full,
-                        backgroundColor: creator.canPublishWithoutApproval ? 'rgba(34,197,94,0.14)' : 'rgba(255,255,255,0.08)',
-                      }}
-                    >
-                      <Text style={[typography.captionBold, { color: creator.canPublishWithoutApproval ? '#86EFAC' : '#D1D5DB' }]}>
-                        {creator.canPublishWithoutApproval ? 'Organizatör' : 'Standart'}
-                      </Text>
-                    </View>
-                  </View>
-                  <Button
-                    title={creator.canPublishWithoutApproval ? 'Organizatör yetkisini kaldır' : 'Organizatör yap'}
-                    size="sm"
-                    variant={creator.canPublishWithoutApproval ? 'outline' : 'primary'}
-                    onPress={() => void handleToggleCreatorPermission(creator)}
-                    loading={permissionLoadingUserId === creator.userId}
-                    disabled={permissionLoadingUserId != null && permissionLoadingUserId !== creator.userId}
-                    fullWidth
-                  />
-                </View>
-              ))
-            )}
-          </View>
-
-          <View
-            style={{
-              borderTopWidth: 1,
-              borderTopColor: colors.cardBorder,
-              paddingTop: spacing.lg,
-            }}
-          >
-            <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Bu okuldaki etkinlikler</Text>
-            {schoolEvents.length === 0 ? (
-              <Text style={[typography.caption, { color: colors.textTertiary }]}>Henüz etkinlik yok.</Text>
-            ) : (
-              schoolEvents.map((event) => (
-                <View
-                  key={event.id}
-                  style={{
-                    marginTop: spacing.sm,
-                    padding: spacing.md,
-                    backgroundColor: '#241626',
-                    borderRadius: radius.xl,
-                    borderWidth: 1,
-                    borderColor: colors.cardBorder,
-                  }}
-                >
-                  <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{event.title}</Text>
-                  <View
-                    style={{
-                      marginTop: spacing.sm,
-                      alignSelf: 'flex-start',
-                      paddingHorizontal: spacing.sm,
-                      paddingVertical: 6,
-                      borderRadius: radius.full,
-                      backgroundColor: getPublishStatusMeta(event.publish_status).bg,
-                    }}
-                  >
-                    <Text style={[typography.captionBold, { color: getPublishStatusMeta(event.publish_status).fg }]}>
-                      {getPublishStatusMeta(event.publish_status).label}
-                    </Text>
-                  </View>
-                  <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>
-                    {formatEventDateLabel(event.starts_at)}
-                  </Text>
-                  {event.location?.trim() ? (
-                    <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 4 }]}>{event.location.trim()}</Text>
-                  ) : null}
-                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
-                    <Button
-                      title="Detay"
-                      size="sm"
-                      variant="outline"
-                      onPress={() => navigation.navigate('EventDetails', { id: event.id, includeUnpublished: true })}
-                      style={{ flex: 1 }}
-                      textStyle={{ color: '#FFFFFF' }}
-                    />
-                    <Button
-                      title="Düzenle"
-                      size="sm"
-                      onPress={() =>
-                        navigation.navigate('EditEvent', {
-                          eventId: event.id,
-                          preselectedSchoolId: route.params.schoolId,
-                          preselectedSchoolName: school.name,
-                        })
-                      }
-                      style={{ flex: 1 }}
-                    />
-                  </View>
-                </View>
-              ))
-            )}
-          </View>
+          <Button
+            title={`Bu okuldaki etkinlikler (${schoolEvents.length})`}
+            onPress={() => setSchoolEventsSheetVisible(true)}
+            variant="outline"
+            textStyle={{ color: '#FFFFFF' }}
+            fullWidth
+          />
         </View>
       );
     }
 
-    return (
-      <View style={{ gap: spacing.md }}>
-        <Input label="Website" value={website} onChangeText={setWebsite} autoCapitalize="none" />
-        <Input label="Telefon" value={telephone} onChangeText={setTelephone} keyboardType="phone-pad" />
-      </View>
-    );
+    return null;
   };
 
   const onSave = async () => {
@@ -671,21 +696,6 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
       setErrorBanner(error instanceof Error ? error.message : 'Okul güncellenemedi.');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const onDelete = async () => {
-    setDeleting(true);
-    setErrorBanner(null);
-    try {
-      await schoolAdminService.deleteManagedSchool(route.params.schoolId);
-      setDeleteModalVisible(false);
-      navigation.goBack();
-    } catch (error: unknown) {
-      setDeleteModalVisible(false);
-      setErrorBanner(error instanceof Error ? error.message : 'Okul silinemedi.');
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -736,17 +746,240 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
         onCancel={() => setSuccessModal(null)}
         onConfirm={() => setSuccessModal(null)}
       />
-      <ConfirmModal
-        visible={deleteModalVisible}
-        title="Okulu sil"
-        message="Bu okul kaydı silinecek. Bu işlem geri alınamaz."
-        confirmVariant="danger"
-        confirmLabel="Sil"
-        cancelLabel="Vazgeç"
-        loading={deleting}
-        onCancel={() => setDeleteModalVisible(false)}
-        onConfirm={() => void onDelete()}
-      />
+      <Modal
+        visible={lessonsSheetVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setLessonsSheetVisible(false)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            justifyContent: 'flex-end',
+          }}
+          onPress={() => setLessonsSheetVisible(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => null}
+            style={{
+              backgroundColor: '#2C1C2D',
+              borderTopLeftRadius: radius.xl,
+              borderTopRightRadius: radius.xl,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.08)',
+              maxHeight: '82%',
+              paddingTop: spacing.sm,
+              paddingHorizontal: spacing.lg,
+              paddingBottom: spacing.xl,
+            }}
+          >
+            <View
+              style={{
+                alignSelf: 'center',
+                width: 44,
+                height: 4,
+                borderRadius: 999,
+                backgroundColor: 'rgba(255,255,255,0.18)',
+                marginBottom: spacing.md,
+              }}
+            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
+              <View style={{ flex: 1, paddingRight: spacing.md }}>
+                <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Bu okuldaki dersler</Text>
+                <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>
+                  Ders detaylarını görüntülemek için bir öğeye dokun.
+                </Text>
+              </View>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setLessonsSheetVisible(false)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'rgba(255,255,255,0.06)',
+                }}
+              >
+                <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>×</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {schoolLessons.length === 0 ? (
+                <Text style={[typography.caption, { color: colors.textTertiary }]}>Henüz ders yok.</Text>
+              ) : (
+                schoolLessons.map((lesson) => (
+                  <TouchableOpacity
+                    key={lesson.id}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setLessonsSheetVisible(false);
+                      navigation.navigate('ClassDetails', { id: lesson.id });
+                    }}
+                    style={{
+                      marginBottom: spacing.sm,
+                      padding: spacing.md,
+                      backgroundColor: '#241626',
+                      borderRadius: radius.xl,
+                      borderWidth: 1,
+                      borderColor: colors.cardBorder,
+                    }}
+                  >
+                    <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{lesson.title}</Text>
+                    {lesson.starts_at ? (
+                      <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>
+                        {formatEventDateLabel(lesson.starts_at)}
+                      </Text>
+                    ) : null}
+                    {lesson.location?.trim() ? (
+                      <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 4 }]}>
+                        {lesson.location.trim()}
+                      </Text>
+                    ) : null}
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={schoolEventsSheetVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSchoolEventsSheetVisible(false)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            justifyContent: 'flex-end',
+          }}
+          onPress={() => setSchoolEventsSheetVisible(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => null}
+            style={{
+              backgroundColor: '#2C1C2D',
+              borderTopLeftRadius: radius.xl,
+              borderTopRightRadius: radius.xl,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.08)',
+              maxHeight: '82%',
+              paddingTop: spacing.sm,
+              paddingHorizontal: spacing.lg,
+              paddingBottom: spacing.xl,
+            }}
+          >
+            <View
+              style={{
+                alignSelf: 'center',
+                width: 44,
+                height: 4,
+                borderRadius: 999,
+                backgroundColor: 'rgba(255,255,255,0.18)',
+                marginBottom: spacing.md,
+              }}
+            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
+              <View style={{ flex: 1, paddingRight: spacing.md }}>
+                <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Bu okuldaki etkinlikler</Text>
+                <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>
+                  Etkinlik detaylarını görüntülemek veya düzenlemek için seç.
+                </Text>
+              </View>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setSchoolEventsSheetVisible(false)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'rgba(255,255,255,0.06)',
+                }}
+              >
+                <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>×</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {schoolEvents.length === 0 ? (
+                <Text style={[typography.caption, { color: colors.textTertiary }]}>Henüz etkinlik yok.</Text>
+              ) : (
+                schoolEvents.map((event) => (
+                  <View
+                    key={event.id}
+                    style={{
+                      marginBottom: spacing.sm,
+                      padding: spacing.md,
+                      backgroundColor: '#241626',
+                      borderRadius: radius.xl,
+                      borderWidth: 1,
+                      borderColor: colors.cardBorder,
+                    }}
+                  >
+                    <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{event.title}</Text>
+                    <View
+                      style={{
+                        marginTop: spacing.sm,
+                        alignSelf: 'flex-start',
+                        paddingHorizontal: spacing.sm,
+                        paddingVertical: 6,
+                        borderRadius: radius.full,
+                        backgroundColor: getPublishStatusMeta(event.publish_status).bg,
+                      }}
+                    >
+                      <Text style={[typography.captionBold, { color: getPublishStatusMeta(event.publish_status).fg }]}>
+                        {getPublishStatusMeta(event.publish_status).label}
+                      </Text>
+                    </View>
+                    <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>
+                      {formatEventDateLabel(event.starts_at)}
+                    </Text>
+                    {event.location?.trim() ? (
+                      <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 4 }]}>{event.location.trim()}</Text>
+                    ) : null}
+                    <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+                      <Button
+                        title="Detay"
+                        size="sm"
+                        variant="outline"
+                        onPress={() => {
+                          setSchoolEventsSheetVisible(false);
+                          navigation.navigate('EventDetails', { id: event.id, includeUnpublished: true });
+                        }}
+                        style={{ flex: 1 }}
+                        textStyle={{ color: '#FFFFFF' }}
+                      />
+                      <Button
+                        title="Düzenle"
+                        size="sm"
+                        onPress={() => {
+                          setSchoolEventsSheetVisible(false);
+                          navigation.navigate('EditEvent', {
+                            eventId: event.id,
+                            preselectedSchoolId: route.params.schoolId,
+                            preselectedSchoolName: school?.name ?? '',
+                          });
+                        }}
+                        style={{ flex: 1 }}
+                      />
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
@@ -801,15 +1034,11 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
           </View>
         </View>
 
-        <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
-          <Button title="Değişiklikleri kaydet" onPress={() => void onSave()} loading={saving} fullWidth />
-          <Button
-            title="Okulu sil"
-            onPress={() => setDeleteModalVisible(true)}
-            variant="danger"
-            fullWidth
-          />
-        </View>
+        {activeTab === 'overview' || activeTab === 'locationContact' ? (
+          <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
+            <Button title="Değişiklikleri kaydet" onPress={() => void onSave()} loading={saving} fullWidth />
+          </View>
+        ) : null}
       </ScrollView>
     </Screen>
   );

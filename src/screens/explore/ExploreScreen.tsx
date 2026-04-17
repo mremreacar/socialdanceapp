@@ -118,6 +118,52 @@ function formatCountPill(value: number): string {
   return value > 500 ? '500+' : String(value);
 }
 
+function compareEventsByProximityOrDate(a: Event, b: Event, userCoords: { latitude: number; longitude: number }): number {
+  const distanceA =
+    a.latitude != null && a.longitude != null
+      ? getDistanceKm(userCoords.latitude, userCoords.longitude, a.latitude, a.longitude)
+      : null;
+  const distanceB =
+    b.latitude != null && b.longitude != null
+      ? getDistanceKm(userCoords.latitude, userCoords.longitude, b.latitude, b.longitude)
+      : null;
+
+  if (distanceA != null && distanceB != null && distanceA !== distanceB) {
+    return distanceA - distanceB;
+  }
+  if (distanceA != null && distanceB == null) return -1;
+  if (distanceA == null && distanceB != null) return 1;
+  return (a.rawDate?.getTime() ?? Number.POSITIVE_INFINITY) - (b.rawDate?.getTime() ?? Number.POSITIVE_INFINITY);
+}
+
+type ExploreLessonItem = PublishedInstructorLessonListItem & {
+  rawDate?: Date;
+  latitude?: number;
+  longitude?: number;
+};
+
+function compareItemsByProximityOrDate(
+  a: { rawDate?: Date | null; latitude?: number | null; longitude?: number | null },
+  b: { rawDate?: Date | null; latitude?: number | null; longitude?: number | null },
+  userCoords: { latitude: number; longitude: number },
+): number {
+  const distanceA =
+    a.latitude != null && a.longitude != null
+      ? getDistanceKm(userCoords.latitude, userCoords.longitude, a.latitude, a.longitude)
+      : null;
+  const distanceB =
+    b.latitude != null && b.longitude != null
+      ? getDistanceKm(userCoords.latitude, userCoords.longitude, b.latitude, b.longitude)
+      : null;
+
+  if (distanceA != null && distanceB != null && distanceA !== distanceB) {
+    return distanceA - distanceB;
+  }
+  if (distanceA != null && distanceB == null) return -1;
+  if (distanceA == null && distanceB != null) return 1;
+  return (a.rawDate?.getTime() ?? Number.POSITIVE_INFINITY) - (b.rawDate?.getTime() ?? Number.POSITIVE_INFINITY);
+}
+
 export const ExploreScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
@@ -129,7 +175,7 @@ export const ExploreScreen: React.FC = () => {
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
-  const [publishedLessons, setPublishedLessons] = useState<PublishedInstructorLessonListItem[]>([]);
+  const [publishedLessons, setPublishedLessons] = useState<ExploreLessonItem[]>([]);
   const [exploreInstructors, setExploreInstructors] = useState<Awaited<
     ReturnType<typeof instructorProfileService.listVisibleForExplore>
   >>([]);
@@ -180,8 +226,29 @@ export const ExploreScreen: React.FC = () => {
         } satisfies Event;
       })
       .filter((item): item is Event => item !== null);
-    setEvents(mapped);
-    setPublishedLessons(lessons);
+    const sortedEvents = [...mapped].sort((a, b) => {
+      const aTime = a.rawDate?.getTime() ?? Number.POSITIVE_INFINITY;
+      const bTime = b.rawDate?.getTime() ?? Number.POSITIVE_INFINITY;
+      return aTime - bTime;
+    });
+    setEvents(sortedEvents);
+    const lessonCoordinateBySchoolId = new Map(
+      schoolRows.map((row) => [
+        row.id,
+        {
+          latitude: toCoordinate(row.latitude),
+          longitude: toCoordinate(row.longitude),
+        },
+      ]),
+    );
+    setPublishedLessons(
+      lessons.map((lesson) => ({
+        ...lesson,
+        rawDate: lesson.nextOccurrenceAt ? new Date(lesson.nextOccurrenceAt) : undefined,
+        latitude: lesson.schoolId ? lessonCoordinateBySchoolId.get(lesson.schoolId)?.latitude : undefined,
+        longitude: lesson.schoolId ? lessonCoordinateBySchoolId.get(lesson.schoolId)?.longitude : undefined,
+      })),
+    );
     setExploreInstructors(instructors);
     setExploreSchools(schoolRows.map(schoolRowToExploreSchool));
   }, []);
@@ -234,8 +301,12 @@ export const ExploreScreen: React.FC = () => {
 
       return true;
     });
-    return list;
-  }, [activeFilter, events, searchQuery]);
+    return [...list].sort((a, b) =>
+      userCoords
+        ? compareEventsByProximityOrDate(a, b, userCoords)
+        : (a.rawDate?.getTime() ?? Number.POSITIVE_INFINITY) - (b.rawDate?.getTime() ?? Number.POSITIVE_INFINITY),
+    );
+  }, [activeFilter, events, searchQuery, userCoords]);
 
   const filteredSchools = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -261,7 +332,7 @@ export const ExploreScreen: React.FC = () => {
 
   const filteredLessons = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return publishedLessons.filter((lesson) => {
+    const list = publishedLessons.filter((lesson) => {
       if (!q) return true;
       const haystack = [
         lesson.title,
@@ -281,7 +352,12 @@ export const ExploreScreen: React.FC = () => {
         .filter(Boolean);
       return haystack.some((value) => value.includes(q));
     });
-  }, [publishedLessons, searchQuery]);
+    return [...list].sort((a, b) =>
+      userCoords
+        ? compareItemsByProximityOrDate(a, b, userCoords)
+        : (b.rawDate?.getTime() ?? Number.NEGATIVE_INFINITY) - (a.rawDate?.getTime() ?? Number.NEGATIVE_INFINITY),
+    );
+  }, [publishedLessons, searchQuery, userCoords]);
 
   const instructorRowsForUi = useMemo(() => {
     if (hasSupabaseConfig()) {
@@ -315,11 +391,7 @@ export const ExploreScreen: React.FC = () => {
     if (!userCoords) return [] as Event[];
     return [...filteredEvents]
       .filter((event) => event.latitude != null && event.longitude != null && event.type !== 'lesson')
-      .sort((a, b) => {
-        const distA = getDistanceKm(userCoords.latitude, userCoords.longitude, a.latitude ?? 0, a.longitude ?? 0);
-        const distB = getDistanceKm(userCoords.latitude, userCoords.longitude, b.latitude ?? 0, b.longitude ?? 0);
-        return distA - distB;
-      })
+      .sort((a, b) => compareEventsByProximityOrDate(a, b, userCoords))
       .slice(0, 5);
   }, [filteredEvents, userCoords]);
   const previewEvents = useMemo(() => filteredEvents.slice(0, 5), [filteredEvents]);
@@ -532,7 +604,7 @@ export const ExploreScreen: React.FC = () => {
         {filteredLessons.length > 0 ? (
           <>
             {previewLessons.map((lesson) => {
-              const displayLesson: Event = {
+              const displayLesson: Event & { distance?: string } = {
                 id: lesson.id,
                 title: lesson.title?.trim() || 'Ders',
                 date: formatLessonStartsAt(lesson.nextOccurrenceAt) || 'Tarih yakında açıklanacak',
@@ -544,6 +616,12 @@ export const ExploreScreen: React.FC = () => {
                 image: lesson.imageUrl?.trim() || '',
                 description: lesson.description?.trim() || '',
                 price: formatLessonPrice(lesson),
+                latitude: lesson.latitude,
+                longitude: lesson.longitude,
+                distance:
+                  userCoords && lesson.latitude != null && lesson.longitude != null
+                    ? `${getDistanceKm(userCoords.latitude, userCoords.longitude, lesson.latitude, lesson.longitude)} km`
+                    : undefined,
               };
 
               return (

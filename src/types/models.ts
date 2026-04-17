@@ -19,6 +19,7 @@ export interface Event {
   /** Enlem/boylam mesafe hesaplama ve sıralama için (konum izni kullanımı) */
   latitude?: number;
   longitude?: number;
+  distance?: string;
 }
 
 export interface School {

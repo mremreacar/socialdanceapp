@@ -557,7 +557,7 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               <Image
                 source={require('../../../assets/social_dance.png')}
                 style={styles.heroLogo}
-                contentFit="contain"
+                resizeMode="contain"
               />
             </View>
           )}

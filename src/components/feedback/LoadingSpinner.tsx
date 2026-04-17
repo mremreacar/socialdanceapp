@@ -5,17 +5,20 @@ import { useTheme } from '../../theme';
 interface LoadingSpinnerProps {
   message?: string;
   fullScreen?: boolean;
+  color?: string;
 }
 
 export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   message,
   fullScreen = false,
+  color,
 }) => {
   const { colors, spacing, typography } = useTheme();
+  const indicatorColor = color ?? colors.primary;
 
   const content = (
     <View style={styles.inner}>
-      <ActivityIndicator size="large" color={colors.primary} />
+      <ActivityIndicator size="large" color={indicatorColor} />
       {message && (
         <Text style={[typography.bodySmall, { color: colors.textSecondary, marginTop: spacing.md }]}>
           {message}

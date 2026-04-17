@@ -72,7 +72,8 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = ({ navigation
       title: 'Hesap',
       items: [
         { label: 'Profil', icon: 'account-outline', route: 'Profile' },
-        { label: hasInstructorProfile ? 'Eğitmen Paneli' : 'Eğitmen Ol', icon: 'account-star-outline', route: 'InstructorOnboarding' },
+        { label: hasInstructorProfile ? 'Eğitmen Paneli' : 'Eğitmenliğe Başla', icon: 'account-star-outline', route: 'InstructorOnboarding' },
+        { label: 'Okul Paneli', icon: 'school-outline', route: 'InstructorSchoolPanel' },
         { label: 'Etkinlik Paneli', icon: 'view-dashboard-outline', route: 'UserPanel' },
       ],
     },
@@ -131,19 +132,19 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = ({ navigation
 
       <ScrollView style={styles.menuList} showsVerticalScrollIndicator={false}>
         {menuSections.map((section) => (
-          <View key={section.title} style={{ paddingTop: spacing.xs }}>
-            <Text style={[typography.captionBold, { color: colors.textSecondary, opacity: 0.85, paddingHorizontal: spacing.xl, marginBottom: 2 }]}>
+          <View key={section.title} style={{ paddingTop: spacing.xxs }}>
+            <Text style={[typography.captionBold, { color: colors.textSecondary, opacity: 0.85, paddingHorizontal: spacing.xl, marginBottom: 0 }]}>
               {section.title}
             </Text>
             {section.items.map((item) => (
               <TouchableOpacity
                 key={item.route}
                 onPress={() => handleNavigate(item)}
-                style={[styles.menuItem, { paddingHorizontal: spacing.xl, paddingVertical: spacing.md }]}
+                style={[styles.menuItem, { paddingHorizontal: spacing.xl, paddingVertical: spacing.sm }]}
                 activeOpacity={0.7}
               >
-                <Icon name={item.icon} size={22} color={colors.headerText} />
-                <Text style={[typography.bodyMedium, { color: colors.headerText, marginLeft: spacing.lg }]}>
+                <Icon name={item.icon} size={20} color={colors.headerText} />
+                <Text style={[typography.bodyMedium, { color: colors.headerText, marginLeft: spacing.md }]}>
                   {item.label}
                 </Text>
               </TouchableOpacity>
@@ -156,11 +157,11 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = ({ navigation
 
       <TouchableOpacity
         onPress={handleLogout}
-        style={[styles.menuItem, { paddingHorizontal: spacing.xl, paddingVertical: spacing.lg }]}
+        style={[styles.menuItem, { paddingHorizontal: spacing.xl, paddingVertical: spacing.md }]}
         activeOpacity={0.7}
       >
-        <Icon name="logout" size={22} color={colors.error} />
-        <Text style={[typography.bodyMedium, { color: colors.error, marginLeft: spacing.lg }]}>
+        <Icon name="logout" size={20} color={colors.error} />
+        <Text style={[typography.bodyMedium, { color: colors.error, marginLeft: spacing.md }]}>
           Çıkış Yap
         </Text>
       </TouchableOpacity>

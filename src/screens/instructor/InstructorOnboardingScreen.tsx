@@ -26,7 +26,6 @@ import {
 } from '../../services/api/instructorProfile';
 import { InstructorLessonsTab } from './InstructorLessonsTab';
 import { InstructorStudentsTab } from './InstructorStudentsTab';
-import { InstructorSchoolTab } from './InstructorSchoolTab';
 import { InstructorCalendarTab } from './InstructorCalendarTab';
 import { InstructorMediaTab } from './InstructorMediaTab';
 
@@ -36,7 +35,7 @@ const WORK_OPTIONS: { mode: InstructorWorkMode; label: string; hint: string }[] 
   { mode: 'both', label: 'Her ikisi', hint: 'Hem bireysel hem kurumla çalışıyorum' },
 ];
 
-type InstructorTabId = 'profile' | 'lessons' | 'calendar' | 'media' | 'students' | 'school';
+type InstructorTabId = 'profile' | 'lessons' | 'calendar' | 'media' | 'students';
 
 const INSTRUCTOR_TABS: { id: InstructorTabId; label: string }[] = [
   { id: 'profile', label: 'Profil' },
@@ -44,7 +43,6 @@ const INSTRUCTOR_TABS: { id: InstructorTabId; label: string }[] = [
   { id: 'calendar', label: 'Takvim' },
   { id: 'media', label: 'Medya' },
   { id: 'students', label: 'Öğrenciler' },
-  { id: 'school', label: 'Okul' },
 ];
 
 function LockedTabBody(props: {
@@ -230,7 +228,7 @@ export const InstructorOnboardingScreen: React.FC = () => {
   };
 
   const hasProfile = !!existing;
-  const headerTitle = hasProfile ? 'Eğitmen paneli' : 'Eğitmen ol';
+  const headerTitle = hasProfile ? 'Eğitmen paneli' : 'Eğitmenliğe başla';
 
   const renderTabContent = () => {
     if (activeTab === 'profile') {
@@ -409,6 +407,59 @@ export const InstructorOnboardingScreen: React.FC = () => {
             <Toggle value={isVisible} onValueChange={setIsVisible} />
           </View>
 
+          <View style={{ marginTop: spacing.lg }}>
+            <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Hızlı erişim</Text>
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setActiveTab('lessons')}
+                style={[
+                  styles.quickCard,
+                  {
+                    flex: 1,
+                    backgroundColor: '#311831',
+                    borderRadius: radius.xl,
+                    borderWidth: 1,
+                    borderColor: colors.cardBorder,
+                    padding: spacing.md,
+                  },
+                ]}
+              >
+                <View style={[styles.quickIcon, { backgroundColor: `${colors.primary}22` }]}>
+                  <Icon name="school-outline" size={20} color={colors.primary} />
+                </View>
+                <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginTop: spacing.sm }]}>Dersler</Text>
+                <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>
+                  Derslerini oluştur ve düzenle.
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setActiveTab('media')}
+                style={[
+                  styles.quickCard,
+                  {
+                    flex: 1,
+                    backgroundColor: '#311831',
+                    borderRadius: radius.xl,
+                    borderWidth: 1,
+                    borderColor: colors.cardBorder,
+                    padding: spacing.md,
+                  },
+                ]}
+              >
+                <View style={[styles.quickIcon, { backgroundColor: `${colors.primary}22` }]}>
+                  <Icon name="image-multiple-outline" size={20} color={colors.primary} />
+                </View>
+                <Text style={[typography.bodySmallBold, { color: '#FFFFFF', marginTop: spacing.sm }]}>Medya</Text>
+                <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>
+                  Fotoğraflarını ve görsellerini yönet.
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           <View style={{ marginTop: spacing.xl }}>
             <Button title={existing ? 'Profili kaydet' : 'Profili oluştur'} onPress={() => void onSave()} loading={saving} fullWidth />
           </View>
@@ -440,7 +491,6 @@ export const InstructorOnboardingScreen: React.FC = () => {
     if (activeTab === 'students') {
       return <InstructorStudentsTab />;
     }
-    return <InstructorSchoolTab />;
   };
 
   if (loading) {
@@ -457,7 +507,7 @@ export const InstructorOnboardingScreen: React.FC = () => {
   if (!hasSupabaseConfig()) {
     return (
       <Screen>
-        <Header title="Eğitmen ol" showBack />
+        <Header title="Eğitmenliğe başla" showBack />
         <View style={{ padding: spacing.lg }}>
           <Text style={[typography.bodyMedium, { color: colors.textSecondary }]}>
             Bu özellik için Supabase yapılandırması gerekir. Geliştirici ortamında EXPO_PUBLIC_SUPABASE_URL ve EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -531,6 +581,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
+  },
+  quickCard: {},
+  quickIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalOverlay: {
     flex: 1,

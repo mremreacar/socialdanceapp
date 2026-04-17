@@ -17,8 +17,6 @@ import { Button } from './src/components/ui/Button';
 import { ConfirmModal } from './src/components/feedback/ConfirmModal';
 import { useTheme } from './src/theme';
 import { ProfileProvider } from './src/context/ProfileContext';
-import { CartProvider } from './src/context/CartContext';
-import { MarketplaceProvider } from './src/context/MarketplaceContext';
 import { ChatProvider } from './src/context/ChatContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { mobileVersionService, type MobileVersionInfo } from './src/services/api/mobileVersion';
@@ -235,15 +233,11 @@ export default function App() {
           ) : (
             <>
               <ProfileProvider>
-                <CartProvider>
-                  <MarketplaceProvider>
-                    <ChatProvider>
-                      <NavigationContainer>
-                        <RootNavigator initialRouteName={initialRouteName} />
-                      </NavigationContainer>
-                    </ChatProvider>
-                  </MarketplaceProvider>
-                </CartProvider>
+                <ChatProvider>
+                  <NavigationContainer>
+                    <RootNavigator initialRouteName={initialRouteName} />
+                  </NavigationContainer>
+                </ChatProvider>
               </ProfileProvider>
               <ConfirmModal
                 visible={!!availableUpdateInfo}

@@ -15,8 +15,10 @@ import { MainStackParamList } from '../../types/navigation';
 import { ApiError, hasSupabaseConfig } from '../../services/api/apiClient';
 import { formatLessonPrice, instructorLessonsService } from '../../services/api/instructorLessons';
 import { instructorLessonReservationsService } from '../../services/api/instructorLessonReservations';
+import { listSchools, type SchoolRow } from '../../services/api/schools';
 import { storage } from '../../services/storage';
 import type { MyEventCardData } from '../../components/domain/MyEventCard';
+import { getDistanceKm, useLocation } from '../../hooks/useLocation';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 type EventTimeFilter = 'Tümü' | 'Bugün' | 'Bu Hafta' | 'Bu Ay';
@@ -28,6 +30,8 @@ type LessonListItem = MyEventCardData & {
   entityId: string;
   rawDate: Date;
   city: string | null;
+  latitude?: number;
+  longitude?: number;
   lessonType: Exclude<LessonTypeFilter, 'Tümü'>;
   deliveryMode: Exclude<DeliveryModeFilter, 'Tümü'>;
   instructorUserId?: string;
@@ -44,9 +48,41 @@ function normalizeText(value: string): string {
   return value.trim().toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+function toCoordinate(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value.trim().replace(',', '.'));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function compareItemsByProximityOrDate(
+  a: { rawDate: Date; latitude?: number; longitude?: number },
+  b: { rawDate: Date; latitude?: number; longitude?: number },
+  userCoords: { latitude: number; longitude: number },
+): number {
+  const distanceA =
+    a.latitude != null && a.longitude != null
+      ? getDistanceKm(userCoords.latitude, userCoords.longitude, a.latitude, a.longitude)
+      : null;
+  const distanceB =
+    b.latitude != null && b.longitude != null
+      ? getDistanceKm(userCoords.latitude, userCoords.longitude, b.latitude, b.longitude)
+      : null;
+
+  if (distanceA != null && distanceB != null && distanceA !== distanceB) {
+    return distanceA - distanceB;
+  }
+  if (distanceA != null && distanceB == null) return -1;
+  if (distanceA == null && distanceB != null) return 1;
+  return a.rawDate.getTime() - b.rawDate.getTime();
+}
+
 export const LessonsScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const { colors, spacing, typography } = useTheme();
+  const { coords: userCoords } = useLocation();
   const [lessons, setLessons] = useState<LessonListItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(() => new Set());
@@ -95,12 +131,29 @@ export const LessonsScreen: React.FC = () => {
   };
 
   const loadLessons = useCallback(async () => {
-    const lessonRows = await instructorLessonsService.listPublished(100).catch(() => []);
+    const schoolPromise = hasSupabaseConfig()
+      ? listSchools({ limit: 200 }).catch(() => [] as SchoolRow[])
+      : Promise.resolve([] as SchoolRow[]);
+
+    const [lessonRows, schoolRows] = await Promise.all([
+      instructorLessonsService.listPublished(100).catch(() => []),
+      schoolPromise,
+    ]);
+    const schoolCoordinateById = new Map(
+      schoolRows.map((row) => [
+        row.id,
+        {
+          latitude: toCoordinate(row.latitude),
+          longitude: toCoordinate(row.longitude),
+        },
+      ]),
+    );
     const mappedLessons = lessonRows
       .map((lesson) => {
         const startsAt = lesson.nextOccurrenceAt ? new Date(lesson.nextOccurrenceAt) : null;
         if (!startsAt || Number.isNaN(startsAt.getTime())) return null;
         const city = lesson.schoolCity?.trim() || null;
+        const schoolCoordinates = lesson.schoolId ? schoolCoordinateById.get(lesson.schoolId) : undefined;
         const locationParts = [
           lesson.schoolName?.trim() || '',
           lesson.scheduleSummary?.trim() || '',
@@ -131,6 +184,8 @@ export const LessonsScreen: React.FC = () => {
           isDanceStar: false,
           rawDate: startsAt,
           city,
+          latitude: schoolCoordinates?.latitude,
+          longitude: schoolCoordinates?.longitude,
           lessonType,
           deliveryMode,
           instructorUserId: lesson.instructorUserId,
@@ -139,7 +194,11 @@ export const LessonsScreen: React.FC = () => {
         };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null)
-      .sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime());
+      .sort((a, b) =>
+        userCoords
+          ? compareItemsByProximityOrDate(a, b, userCoords)
+          : b.rawDate.getTime() - a.rawDate.getTime(),
+      );
 
     setLessons(mappedLessons);
 
@@ -158,7 +217,7 @@ export const LessonsScreen: React.FC = () => {
     } catch {
       setJoinedLessonIds(new Set());
     }
-  }, []);
+  }, [userCoords]);
 
   useEffect(() => {
     void loadLessons().catch(() => {
@@ -185,7 +244,7 @@ export const LessonsScreen: React.FC = () => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const normalizedQuery = normalizeText(searchQuery);
-    return lessons.filter((lesson) => {
+    const list = lessons.filter((lesson) => {
       const lessonDay = new Date(lesson.rawDate.getFullYear(), lesson.rawDate.getMonth(), lesson.rawDate.getDate());
       if (activeTimeFilter === 'Bugün' && lessonDay.getTime() !== startOfToday.getTime()) return false;
       if (activeTimeFilter === 'Bu Hafta') {
@@ -210,7 +269,12 @@ export const LessonsScreen: React.FC = () => {
       }
       return true;
     });
-  }, [activeCityFilter, activeDeliveryModeFilter, activeLessonTypeFilter, activeReservationFilter, activeTimeFilter, joinedLessonIds, lessons, searchQuery]);
+    return [...list].sort((a, b) =>
+      userCoords
+        ? compareItemsByProximityOrDate(a, b, userCoords)
+        : b.rawDate.getTime() - a.rawDate.getTime(),
+    );
+  }, [activeCityFilter, activeDeliveryModeFilter, activeLessonTypeFilter, activeReservationFilter, activeTimeFilter, joinedLessonIds, lessons, searchQuery, userCoords]);
 
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
@@ -332,6 +396,10 @@ export const LessonsScreen: React.FC = () => {
                     attendees: lesson.attendees,
                     attendeeAvatars: lesson.attendeeAvatars,
                     isDanceStar: lesson.isDanceStar,
+                    distance:
+                      userCoords && lesson.latitude != null && lesson.longitude != null
+                        ? `${getDistanceKm(userCoords.latitude, userCoords.longitude, lesson.latitude, lesson.longitude)} km`
+                        : undefined,
                   }}
                   onPress={() => navigation.navigate('ClassDetails', { id: lesson.entityId })}
                   onFavoritePress={() => toggleFavorite(String(lesson.id))}

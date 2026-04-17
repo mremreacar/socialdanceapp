@@ -19,6 +19,8 @@ export function setupNotificationHandler(): void {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
       shouldPlaySound: true,
       shouldSetBadge: true,
     }),
@@ -37,7 +39,11 @@ export async function scheduleWelcomeNotification(): Promise<string | null> {
         body: 'Çevrendeki dans etkinliklerini keşfetmeye başla.',
         data: { type: 'welcome' },
       },
-      trigger: { seconds: 5 },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 5,
+        repeats: false,
+      },
     });
     return id;
   } catch {
@@ -62,7 +68,10 @@ export async function scheduleEventReminder(
         body: `${eventTitle} 1 saat sonra başlıyor.`,
         data: { eventTitle },
       },
-      trigger: triggerDate,
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: triggerDate,
+      },
     });
     return id;
   } catch {

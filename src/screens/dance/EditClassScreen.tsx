@@ -91,6 +91,28 @@ function isSameDay(a: Date | null, b: Date | null): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+function createPlaceholderSchool(id: string, name: string): SchoolRow {
+  return {
+    id,
+    name,
+    category: null,
+    address: null,
+    city: null,
+    district: null,
+    latitude: null,
+    longitude: null,
+    google_maps_url: null,
+    rating: null,
+    review_count: null,
+    website: null,
+    telephone: null,
+    image_url: null,
+    current_status: null,
+    next_status: null,
+    snippet: null,
+  };
+}
+
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 type EditClassRoute = RouteProp<MainStackParamList, 'EditClass'>;
 
@@ -108,26 +130,7 @@ export const EditClassScreen: React.FC = () => {
   const [assignedSchools, setAssignedSchools] = useState<AssignedSchoolItem[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(preselectedSchoolId);
   const [preselectedSchool, setPreselectedSchool] = useState<SchoolRow | null>(
-    preselectedSchoolId && preselectedSchoolName
-      ? {
-          id: preselectedSchoolId,
-          name: preselectedSchoolName,
-          category: null,
-          address: null,
-          city: null,
-          district: null,
-          latitude: null,
-          longitude: null,
-          rating: null,
-          review_count: null,
-          website: null,
-          telephone: null,
-          image_url: null,
-          current_status: null,
-          next_status: null,
-          snippet: null,
-        }
-      : null,
+    preselectedSchoolId && preselectedSchoolName ? createPlaceholderSchool(preselectedSchoolId, preselectedSchoolName) : null,
   );
   const [showSchoolPicker, setShowSchoolPicker] = useState(false);
   const [schoolSearchQuery, setSchoolSearchQuery] = useState('');
@@ -326,51 +329,13 @@ export const EditClassScreen: React.FC = () => {
         if (!cancelled) {
           setPreselectedSchool(
             row ??
-              (preselectedSchoolName
-                ? {
-                    id: preselectedSchoolId,
-                    name: preselectedSchoolName,
-                    category: null,
-                    address: null,
-                    city: null,
-                    district: null,
-                    latitude: null,
-                    longitude: null,
-                    rating: null,
-                    review_count: null,
-                    website: null,
-                    telephone: null,
-                    image_url: null,
-                    current_status: null,
-                    next_status: null,
-                    snippet: null,
-                  }
-                : null),
+              (preselectedSchoolName ? createPlaceholderSchool(preselectedSchoolId, preselectedSchoolName) : null),
           );
         }
       } catch {
         if (!cancelled) {
           setPreselectedSchool(
-            preselectedSchoolName
-              ? {
-                  id: preselectedSchoolId,
-                  name: preselectedSchoolName,
-                  category: null,
-                  address: null,
-                  city: null,
-                  district: null,
-                  latitude: null,
-                  longitude: null,
-                  rating: null,
-                  review_count: null,
-                  website: null,
-                  telephone: null,
-                  image_url: null,
-                  current_status: null,
-                  next_status: null,
-                  snippet: null,
-                }
-              : null,
+            preselectedSchoolName ? createPlaceholderSchool(preselectedSchoolId, preselectedSchoolName) : null,
           );
         }
       }

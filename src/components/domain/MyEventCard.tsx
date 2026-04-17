@@ -19,6 +19,7 @@ export interface MyEventCardData {
   attendees?: number;
   attendeeAvatars?: string[];
   isDanceStar?: boolean;
+  distance?: string;
 }
 
 interface MyEventCardProps {
@@ -105,6 +106,7 @@ export const MyEventCard: React.FC<MyEventCardProps> = ({
           <Icon name="map-marker-outline" size={16} color="rgba(255,255,255,0.7)" />
           <Text style={[typography.caption, { color: 'rgba(255,255,255,0.7)', marginLeft: 6 }]} numberOfLines={1}>
             {event.location}
+            {event.distance ? ` • ${event.distance}` : ''}
           </Text>
         </View>
       </View>

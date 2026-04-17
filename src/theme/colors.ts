@@ -112,8 +112,6 @@ export const lightTheme = {
   tabBarInactive: palette.zinc400,
   tabBarActive: palette.primary,
 
-  headerText: '#FFFFFF',
-
   inputBg: palette.zinc50,
   inputBorder: palette.zinc200,
   inputPlaceholder: palette.zinc400,

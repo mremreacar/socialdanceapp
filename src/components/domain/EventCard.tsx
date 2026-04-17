@@ -70,6 +70,11 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 
               {compactPrimaryLocation}
             </Text>
           </View>
+          {event.distance ? (
+            <Text style={[typography.caption, styles.compactDistanceText, { color: textSecondaryColor }]} numberOfLines={1}>
+              {event.distance}
+            </Text>
+          ) : null}
           {compactDistance ? (
             <Text style={[typography.caption, styles.compactDistanceText, { color: textSecondaryColor }]} numberOfLines={1}>
               {compactDistance}
@@ -115,6 +120,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onPress, variant = 
           <Icon name="map-marker-outline" size={14} color={iconColor} />
           <Text style={[typography.caption, { color: textSecondaryColor, marginLeft: 6 }]} numberOfLines={1}>
             {event.location}
+            {event.distance ? ` • ${event.distance}` : ''}
           </Text>
         </View>
         <View style={[styles.rowBetween, { marginTop: spacing.sm }]}>

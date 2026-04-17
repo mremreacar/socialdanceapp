@@ -199,7 +199,7 @@ export const SettingsScreen: React.FC = () => {
                             ? instructorProfile.headline?.trim()
                               ? instructorProfile.headline.trim()
                               : 'Eğitmen profilim'
-                            : 'Eğitmen ol'}
+                            : 'Eğitmenliğe başla'}
                         </Text>
                         {instructorProfile ? (
                           instructorProfile.headline?.trim() ? (
