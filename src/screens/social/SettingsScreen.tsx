@@ -147,7 +147,7 @@ export const SettingsScreen: React.FC = () => {
               <TouchableOpacity
                 style={styles.row}
                 activeOpacity={0.7}
-                onPress={() => (navigation as any).navigate('FavoriteSchools')}
+                onPress={() => (navigation as any).navigate('FavoritesHub')}
               >
                 <View style={[styles.iconWrap, { backgroundColor: getIconColor('purple') + '20' }]}>
                   <Icon name="heart" size={20} color={getIconColor('purple')} />
@@ -157,7 +157,7 @@ export const SettingsScreen: React.FC = () => {
                 </View>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => (navigation as any).navigate('FavoriteSchools')}
+                onPress={() => (navigation as any).navigate('FavoritesHub')}
                 hitSlop={8}
                 style={styles.rightControl}
               >

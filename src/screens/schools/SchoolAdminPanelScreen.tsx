@@ -16,7 +16,6 @@ import { MainStackParamList } from '../../types/navigation';
 import { useTheme } from '../../theme';
 import { instructorLessonsService, parseLessonStartsAtToIso, parseTlToCents } from '../../services/api/instructorLessons';
 import { schoolAdminService, type ManagedSchoolModel } from '../../services/api/schoolAdmin';
-import { createSchoolEvent } from '../../services/api/schoolEvents';
 import {
   instructorSchoolEventsService,
   type ManagedSchoolEventItem,
@@ -113,14 +112,6 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
   const [lessonCurrency, setLessonCurrency] = useState<string>('TRY');
   const [lessonPublished, setLessonPublished] = useState(true);
   const [lessonSaving, setLessonSaving] = useState(false);
-  const [eventTitle, setEventTitle] = useState('');
-  const [eventDescription, setEventDescription] = useState('');
-  const [eventLocation, setEventLocation] = useState('');
-  const [eventCity, setEventCity] = useState('');
-  const [eventStartsAt, setEventStartsAt] = useState<Date | null>(null);
-  const [eventParticipantLimitText, setEventParticipantLimitText] = useState('');
-  const [eventPriceText, setEventPriceText] = useState('');
-  const [eventSaving, setEventSaving] = useState(false);
 
   const applySchool = useCallback((row: ManagedSchoolModel) => {
     setSchool(row);
@@ -191,7 +182,6 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
   const displayImageUri = selectedImageUri?.trim() || imageUrl.trim();
   const lessonSelectedParticipantLimit =
     lessonFormat === 'Özel ders' ? 1 : parseParticipantLimit(lessonParticipantLimitText);
-  const eventSelectedParticipantLimit = parseParticipantLimit(eventParticipantLimitText);
 
   const formatEventDateLabel = useCallback((startsAt: string) => {
     const date = new Date(startsAt);
@@ -248,16 +238,6 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
     setLessonDelivery('Yüz yüze');
     setLessonCurrency('TRY');
     setLessonPublished(true);
-  }, [school?.city]);
-
-  const resetEventCreateForm = useCallback(() => {
-    setEventTitle('');
-    setEventDescription('');
-    setEventLocation('');
-    setEventCity(school?.city ?? '');
-    setEventStartsAt(null);
-    setEventParticipantLimitText('');
-    setEventPriceText('');
   }, [school?.city]);
 
   const handleCreateLesson = useCallback(async () => {
@@ -317,72 +297,6 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
     load,
     resetLessonCreateForm,
     route.params.schoolId,
-  ]);
-
-  const handleCreateEvent = useCallback(async () => {
-    if (!eventTitle.trim()) {
-      setErrorBanner('Etkinlik adı gerekli.');
-      return;
-    }
-    if (!eventDescription.trim()) {
-      setErrorBanner('Etkinlik açıklaması gerekli.');
-      return;
-    }
-    if (!eventStartsAt) {
-      setErrorBanner('Etkinlik başlangıç tarihi gerekli.');
-      return;
-    }
-    if (!eventLocation.trim()) {
-      setErrorBanner('Etkinlik konumu gerekli.');
-      return;
-    }
-    if (!eventParticipantLimitText.trim() || eventSelectedParticipantLimit == null) {
-      setErrorBanner('Geçerli bir katılımcı limiti girin.');
-      return;
-    }
-    const priceCents = parseTlToCents(eventPriceText);
-    setEventSaving(true);
-    setErrorBanner(null);
-    try {
-      await createSchoolEvent({
-        schoolId: route.params.schoolId,
-        title: eventTitle.trim(),
-        startsAt: parseLessonStartsAtToIso(eventStartsAt) ?? eventStartsAt.toISOString(),
-        city: eventCity.trim() || school?.city || null,
-        location: eventLocation.trim(),
-        description: eventDescription.trim(),
-        participantLimit: eventSelectedParticipantLimit,
-        priceAmount: priceCents != null ? priceCents / 100 : null,
-        priceCurrency: 'TRY',
-        eventType: 'event',
-        publishStatus: 'pending',
-        locationPlace: {
-          address: eventLocation.trim(),
-          formatted_address: eventLocation.trim(),
-          city: eventCity.trim() || school?.city || null,
-        },
-      });
-      setSuccessModal('Etkinlik oluşturuldu.');
-      resetEventCreateForm();
-      await load();
-    } catch (error) {
-      setErrorBanner(error instanceof Error ? error.message : 'Etkinlik oluşturulamadı.');
-    } finally {
-      setEventSaving(false);
-    }
-  }, [
-    eventCity,
-    eventDescription,
-    eventLocation,
-    eventParticipantLimitText,
-    eventPriceText,
-    eventStartsAt,
-    eventTitle,
-    eventSelectedParticipantLimit,
-    load,
-    resetEventCreateForm,
-    route.params.schoolId,
-    school?.city,
   ]);
 
   const renderTabContent = () => {
@@ -596,56 +510,17 @@ export const SchoolAdminPanelScreen: React.FC<Props> = ({ route, navigation }) =
       return (
         <View style={{ gap: spacing.lg }}>
           <View style={{ gap: spacing.md }}>
-            <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>Yeni etkinlik oluştur</Text>
             <Text style={[typography.caption, { color: colors.textTertiary }]}>
-              Etkinliği bu ekrandan doğrudan kaydedebilirsin.
+              Görsel ve video alanı dahil aynı etkinlik oluşturma ekranını açar.
             </Text>
-            <Input label="Etkinlik adı" value={eventTitle} onChangeText={setEventTitle} required />
-            <LessonDateTimeField
-              label="Başlangıç tarihi ve saati"
-              helperText="Etkinliğin ne zaman başlayacağını seç."
-              emptyText="Tarih seçmek için dokun"
-              value={eventStartsAt}
-              onChange={setEventStartsAt}
-            />
-            <Input
-              label="Konum"
-              value={eventLocation}
-              onChangeText={setEventLocation}
-              placeholder="Örn. Kadıköy Dans Stüdyosu"
-            />
-            <Input
-              label="Şehir"
-              value={eventCity}
-              onChangeText={setEventCity}
-              placeholder="İsteğe bağlı"
-            />
-            <Input
-              label="Açıklama"
-              value={eventDescription}
-              onChangeText={setEventDescription}
-              placeholder="İsteğe bağlı"
-              multiline
-            />
-            <Input
-              label="Katılımcı sayısı"
-              value={eventParticipantLimitText}
-              onChangeText={setEventParticipantLimitText}
-              placeholder="Boş bırakılamaz"
-              keyboardType="number-pad"
-              required
-            />
-            <Input
-              label="Bilet fiyatı (TL)"
-              value={eventPriceText}
-              onChangeText={setEventPriceText}
-              placeholder="Boş = ücretsiz"
-              keyboardType="decimal-pad"
-            />
             <Button
-              title="Etkinliği oluştur"
-              onPress={() => void handleCreateEvent()}
-              loading={eventSaving}
+              title="Etkinlik oluştur ekranını aç"
+              onPress={() =>
+                navigation.navigate('EditEvent', {
+                  preselectedSchoolId: route.params.schoolId,
+                  preselectedSchoolName: school?.name ?? '',
+                })
+              }
               fullWidth
             />
           </View>

@@ -13,6 +13,7 @@ import { Icon } from '../../components/ui/Icon';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../../types/navigation';
 import { ApiError, hasSupabaseConfig } from '../../services/api/apiClient';
+import { listFavoriteEventIds, addFavoriteEvent, removeFavoriteEvent } from '../../services/api/eventFavorites';
 import { formatLessonPrice, instructorLessonsService } from '../../services/api/instructorLessons';
 import { instructorLessonReservationsService } from '../../services/api/instructorLessonReservations';
 import { listSchools, type SchoolRow } from '../../services/api/schools';
@@ -98,14 +99,28 @@ export const LessonsScreen: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const isClosingFilterSheetRef = useRef(false);
 
-  const toggleFavorite = (id: string) => {
-    setFavoritedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  const toggleFavorite = useCallback(
+    async (id: string) => {
+      try {
+        const nextIsFavorite = !favoritedIds.has(id);
+        if (nextIsFavorite) {
+          await addFavoriteEvent(id);
+        } else {
+          await removeFavoriteEvent(id);
+        }
+        setFavoritedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Favori işlemi tamamlanamadı.';
+        setToastMessage(msg);
+      }
+    },
+    [favoritedIds],
+  );
 
   const handleLessonReservation = async (lessonId: string) => {
     if (!hasSupabaseConfig()) {
@@ -134,11 +149,16 @@ export const LessonsScreen: React.FC = () => {
     const schoolPromise = hasSupabaseConfig()
       ? listSchools({ limit: 200 }).catch(() => [] as SchoolRow[])
       : Promise.resolve([] as SchoolRow[]);
+    const favoriteLessonIdsPromise = hasSupabaseConfig()
+      ? listFavoriteEventIds().catch(() => [] as string[])
+      : Promise.resolve([] as string[]);
 
-    const [lessonRows, schoolRows] = await Promise.all([
+    const [lessonRows, schoolRows, favoriteLessonIds] = await Promise.all([
       instructorLessonsService.listPublished(100).catch(() => []),
       schoolPromise,
+      favoriteLessonIdsPromise,
     ]);
+    setFavoritedIds(new Set(favoriteLessonIds));
     const schoolCoordinateById = new Map(
       schoolRows.map((row) => [
         row.id,
@@ -223,6 +243,7 @@ export const LessonsScreen: React.FC = () => {
     void loadLessons().catch(() => {
       setLessons([]);
       setJoinedLessonIds(new Set());
+      setFavoritedIds(new Set());
     });
   }, [loadLessons]);
 
@@ -231,6 +252,7 @@ export const LessonsScreen: React.FC = () => {
       void loadLessons().catch(() => {
         setLessons([]);
         setJoinedLessonIds(new Set());
+        setFavoritedIds(new Set());
       });
     }, [loadLessons]),
   );
@@ -303,6 +325,7 @@ export const LessonsScreen: React.FC = () => {
       .catch(() => {
         setLessons([]);
         setJoinedLessonIds(new Set());
+        setFavoritedIds(new Set());
       })
       .finally(() => setRefreshing(false));
   }, [loadLessons]);
@@ -391,7 +414,7 @@ export const LessonsScreen: React.FC = () => {
                     day: lesson.day,
                     month: lesson.month,
                     image: lesson.image ?? '',
-                    isFavorite: favoritedIds.has(String(lesson.id)),
+                    isFavorite: favoritedIds.has(lesson.entityId),
                     isPopular: lesson.isPopular,
                     attendees: lesson.attendees,
                     attendeeAvatars: lesson.attendeeAvatars,
@@ -402,7 +425,7 @@ export const LessonsScreen: React.FC = () => {
                         : undefined,
                   }}
                   onPress={() => navigation.navigate('ClassDetails', { id: lesson.entityId })}
-                  onFavoritePress={() => toggleFavorite(String(lesson.id))}
+                  onFavoritePress={() => void toggleFavorite(lesson.entityId)}
                   hasJoinedReservation={joinedLessonIds.has(lesson.entityId)}
                   reservationLoading={reservingId === `lesson:${lesson.entityId}`}
                   actionLabel="Derse Katıl"

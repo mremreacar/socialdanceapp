@@ -13,7 +13,9 @@ import { Icon } from '../../components/ui/Icon';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../../types/navigation';
 import { ApiError, hasSupabaseConfig } from '../../services/api/apiClient';
+import { addFavoriteEvent, listFavoriteEventIds, removeFavoriteEvent } from '../../services/api/eventFavorites';
 import { listAllSchoolEvents } from '../../services/api/schoolEvents';
+import { listFavoriteSchoolIds } from '../../services/api/favorites';
 import { listSchools, type SchoolRow } from '../../services/api/schools';
 import { schoolEventAttendeesService } from '../../services/api/schoolEventAttendees';
 import { storage } from '../../services/storage';
@@ -29,6 +31,7 @@ type EventListItem = MyEventCardData & {
   entityId: string;
   rawDate: Date;
   city: string | null;
+  schoolId: string | null;
   latitude?: number;
   longitude?: number;
 };
@@ -71,6 +74,8 @@ export const MyEventsScreen: React.FC = () => {
   const [events, setEvents] = useState<EventListItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(() => new Set());
+  const [favoriteSchoolCount, setFavoriteSchoolCount] = useState<number | null>(null);
+  const [favoriteSchoolIds, setFavoriteSchoolIds] = useState<Set<string>>(() => new Set());
   const [joinedEventIds, setJoinedEventIds] = useState<Set<string>>(() => new Set());
   const [reservingId, setReservingId] = useState<string | null>(null);
   const [activeTimeFilter, setActiveTimeFilter] = useState<EventTimeFilter>('Tümü');
@@ -80,14 +85,28 @@ export const MyEventsScreen: React.FC = () => {
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const toggleFavorite = (id: string) => {
-    setFavoritedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  const toggleFavorite = useCallback(
+    async (id: string) => {
+      try {
+        const nextIsFavorite = !favoritedIds.has(id);
+        if (nextIsFavorite) {
+          await addFavoriteEvent(id);
+        } else {
+          await removeFavoriteEvent(id);
+        }
+        setFavoritedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Favori işlemi tamamlanamadı.';
+        setToastMessage(msg);
+      }
+    },
+    [favoritedIds],
+  );
 
   const handleReservation = async (eventId: string) => {
     if (!hasSupabaseConfig()) {
@@ -116,8 +135,32 @@ export const MyEventsScreen: React.FC = () => {
     const schoolPromise = hasSupabaseConfig()
       ? listSchools({ limit: 200 }).catch(() => [] as SchoolRow[])
       : Promise.resolve([] as SchoolRow[]);
+    const favoriteSchoolIdsPromise = hasSupabaseConfig()
+      ? (async () => {
+          const token = await storage.getAccessToken();
+          if (!token) return [] as string[];
+          return await listFavoriteSchoolIds();
+        })().catch(() => [] as string[])
+      : Promise.resolve([] as string[]);
 
-    const [eventRows, schoolRows] = await Promise.all([listAllSchoolEvents(100), schoolPromise]);
+    const favoriteEventIdsPromise = hasSupabaseConfig()
+      ? (async () => {
+          const token = await storage.getAccessToken();
+          if (!token) return [] as string[];
+          return await listFavoriteEventIds();
+        })().catch(() => [] as string[])
+      : Promise.resolve([] as string[]);
+
+    const [eventRows, schoolRows, favoriteSchoolIds, favoriteEventIds] = await Promise.all([
+      listAllSchoolEvents(100),
+      schoolPromise,
+      favoriteSchoolIdsPromise,
+      favoriteEventIdsPromise,
+    ]);
+    const favoriteSchoolIdSet = new Set(favoriteSchoolIds);
+    setFavoriteSchoolIds(favoriteSchoolIdSet);
+    setFavoriteSchoolCount(favoriteSchoolIdSet.size);
+    setFavoritedIds(new Set(favoriteEventIds));
     const schoolCoordinateById = new Map(
       schoolRows.map((row) => [
         row.id,
@@ -160,6 +203,7 @@ export const MyEventsScreen: React.FC = () => {
           isDanceStar: false,
           rawDate: startsAt,
           city,
+          schoolId: row.school_id,
           latitude: ownCoordinates.latitude ?? schoolCoordinates?.latitude,
           longitude: ownCoordinates.longitude ?? schoolCoordinates?.longitude,
         };
@@ -191,6 +235,9 @@ export const MyEventsScreen: React.FC = () => {
     void loadEvents().catch(() => {
       setEvents([]);
       setJoinedEventIds(new Set());
+      setFavoriteSchoolIds(new Set());
+      setFavoriteSchoolCount(0);
+      setFavoritedIds(new Set());
     });
   }, [loadEvents]);
 
@@ -199,6 +246,9 @@ export const MyEventsScreen: React.FC = () => {
       void loadEvents().catch(() => {
         setEvents([]);
         setJoinedEventIds(new Set());
+        setFavoriteSchoolIds(new Set());
+        setFavoriteSchoolCount(0);
+        setFavoritedIds(new Set());
       });
     }, [loadEvents]),
   );
@@ -281,6 +331,9 @@ export const MyEventsScreen: React.FC = () => {
       .catch(() => {
         setEvents([]);
         setJoinedEventIds(new Set());
+        setFavoriteSchoolIds(new Set());
+        setFavoriteSchoolCount(0);
+        setFavoritedIds(new Set());
       })
       .finally(() => setRefreshing(false));
   }, [loadEvents]);
@@ -352,6 +405,11 @@ export const MyEventsScreen: React.FC = () => {
               Aktif filtreler: {activeFilterLabels.join(' • ')}
             </Text>
           ) : null}
+          {favoriteSchoolCount != null ? (
+            <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+              {favoriteSchoolCount} favori okul etkinliklerde yansıtılıyor
+            </Text>
+          ) : null}
 
           {filtered.length > 0 ? (
             filtered.map((event) => (
@@ -365,18 +423,19 @@ export const MyEventsScreen: React.FC = () => {
                     day: event.day,
                     month: event.month,
                     image: event.image ?? '',
-                    isFavorite: favoritedIds.has(String(event.id)),
+                    isFavorite: favoritedIds.has(event.entityId),
                     isPopular: event.isPopular,
                     attendees: event.attendees,
                     attendeeAvatars: event.attendeeAvatars,
                     isDanceStar: event.isDanceStar,
+                    badgeLabel: event.schoolId && favoriteSchoolIds.has(event.schoolId) ? 'Favori okul etkinliği' : undefined,
                     distance:
                       userCoords && event.latitude != null && event.longitude != null
                         ? `${getDistanceKm(userCoords.latitude, userCoords.longitude, event.latitude, event.longitude)} km`
                         : undefined,
                   }}
                   onPress={() => navigation.navigate('EventDetails', { id: event.entityId, fromFavorites: true })}
-                  onFavoritePress={() => toggleFavorite(String(event.id))}
+                  onFavoritePress={() => void toggleFavorite(event.entityId)}
                   hasJoinedReservation={joinedEventIds.has(event.entityId)}
                   reservationLoading={reservingId === event.entityId}
                   onReservationPress={() => void handleReservation(event.entityId)}

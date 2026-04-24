@@ -1,37 +1,176 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, ScrollView, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../../components/layout/Screen';
 import { Header } from '../../components/layout/Header';
 import { useTheme } from '../../theme';
-import { Icon } from '../../components/ui/Icon';
 import { EmptyState } from '../../components/feedback/EmptyState';
-import { mockFavoritesEvents } from '../../constants/mockData';
-import { listFavoriteSchoolIds } from '../../services/api/favorites';
+import { LoadingSpinner } from '../../components/feedback/LoadingSpinner';
+import { SchoolCard } from '../../components/domain/SchoolCard';
+import { MyEventCard } from '../../components/domain/MyEventCard';
+import { Chip } from '../../components/ui/Chip';
+import type { School } from '../../types/models';
+import type { MyEventCardData } from '../../components/domain/MyEventCard';
 import { MainStackParamList } from '../../types/navigation';
+import { listFavoriteSchools } from '../../services/api/favorites';
+import { listFavoriteEventIds, removeFavoriteEvent } from '../../services/api/eventFavorites';
+import { listAllSchoolEvents, type SchoolEventRow } from '../../services/api/schoolEvents';
+import { instructorLessonsService, type PublishedInstructorLessonListItem } from '../../services/api/instructorLessons';
+import type { SchoolRow } from '../../services/api/schools';
+import { hasSupabaseConfig } from '../../services/api/apiClient';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'FavoritesHub'>;
 
-export const FavoritesHubScreen: React.FC<Props> = ({ navigation }) => {
-  const { colors, spacing, radius, typography } = useTheme();
-  const [refreshing, setRefreshing] = useState(false);
-  const [favoriteSchoolCount, setFavoriteSchoolCount] = useState<number | null>(null);
-  const [schoolError, setSchoolError] = useState<string | null>(null);
+type FavoriteEventItem = MyEventCardData & {
+  entityId: string;
+  schoolId: string | null;
+  rawDate: Date;
+};
 
-  const favoriteEventsCount = useMemo(
-    () => mockFavoritesEvents.filter((e) => e.isFavorite).length,
-    [],
-  );
+type FavoritesSectionFilter = 'all' | 'schools' | 'events' | 'lessons';
+
+function toFavoriteSchool(row: SchoolRow): School {
+  const location = [row.district, row.city].filter(Boolean).join(', ') || row.address || '';
+  const image = row.image_url?.trim() || '';
+  return {
+    id: row.id,
+    name: row.name,
+    location: location || '—',
+    image,
+    rating: typeof row.rating === 'number' ? row.rating : 4.7,
+    ratingCount: typeof row.review_count === 'number' ? row.review_count : 0,
+    phone: row.telephone || undefined,
+    website: row.website || undefined,
+    latitude: row.latitude ?? undefined,
+    longitude: row.longitude ?? undefined,
+    tags: row.category ? [row.category] : undefined,
+  };
+}
+
+export const FavoritesHubScreen: React.FC<Props> = ({ navigation }) => {
+  const { colors, spacing, typography } = useTheme();
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [favoriteSchools, setFavoriteSchools] = useState<School[]>([]);
+  const [favoriteEvents, setFavoriteEvents] = useState<FavoriteEventItem[]>([]);
+  const [favoriteLessons, setFavoriteLessons] = useState<FavoriteEventItem[]>([]);
+  const [schoolError, setSchoolError] = useState<string | null>(null);
+  const [eventError, setEventError] = useState<string | null>(null);
+  const [sectionFilter, setSectionFilter] = useState<FavoritesSectionFilter>('all');
 
   const load = useCallback(async () => {
     setSchoolError(null);
+    setEventError(null);
+    setLoading(true);
+
     try {
-      const ids = await listFavoriteSchoolIds();
-      setFavoriteSchoolCount(ids.length);
+      if (!hasSupabaseConfig()) {
+        setFavoriteSchools([]);
+        setFavoriteEvents([]);
+        setFavoriteLessons([]);
+        return;
+      }
+
+      const [schoolRows, favoriteEventIds, eventRows] = await Promise.all([
+        listFavoriteSchools().catch((e: any) => {
+          setSchoolError(e?.message || 'Favori okullar yüklenemedi');
+          return [] as SchoolRow[];
+        }),
+        listFavoriteEventIds().catch((e: any) => {
+          setEventError(e?.message || 'Favori etkinlikler yüklenemedi');
+          return [] as string[];
+        }),
+        listAllSchoolEvents(200).catch(() => [] as SchoolEventRow[]),
+      ]);
+
+      const favoriteSchoolIds = new Set(schoolRows.map((row) => row.id));
+      const favoriteEventIdSet = new Set(favoriteEventIds);
+      setFavoriteSchools(schoolRows.map(toFavoriteSchool));
+
+      const [favoriteLessonRows, favoriteEventRows] = await Promise.all([
+        instructorLessonsService.listPublishedByIds(favoriteEventIds).catch(() => [] as PublishedInstructorLessonListItem[]),
+        Promise.resolve(
+          eventRows.filter((row) => favoriteEventIdSet.has(row.id) && (row.event_type ?? '').trim().toLowerCase() !== 'lesson'),
+        ),
+      ]);
+
+      const mappedEvents = favoriteEventRows
+        .map((row) => {
+          const startsAt = new Date(row.starts_at);
+          if (Number.isNaN(startsAt.getTime())) return null;
+          return {
+            entityId: row.id,
+            id: `event:${row.id}`,
+            title: row.title?.trim() || 'Etkinlik',
+            location: row.location?.trim() || 'Konum yakında açıklanacak',
+            date: startsAt.toLocaleString('tr-TR', {
+              weekday: 'long',
+              day: '2-digit',
+              month: 'long',
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            day: startsAt.toLocaleDateString('tr-TR', { day: '2-digit' }),
+            month: startsAt.toLocaleDateString('tr-TR', { month: 'short' }).toUpperCase(),
+            image: row.image_url?.trim() || '',
+            isFavorite: true,
+            isPopular: false,
+            attendees: 0,
+            attendeeAvatars: [],
+            isDanceStar: false,
+            badgeLabel: row.school_id && favoriteSchoolIds.has(row.school_id) ? 'Favori okul etkinliği' : undefined,
+            schoolId: row.school_id,
+            rawDate: startsAt,
+          } as FavoriteEventItem;
+        })
+        .filter((item): item is FavoriteEventItem => item !== null)
+        .sort((a, b) => a.rawDate.getTime() - b.rawDate.getTime());
+
+      const mappedLessons = favoriteLessonRows
+        .map((lesson) => {
+          const nextDate = lesson.nextOccurrenceAt ? new Date(lesson.nextOccurrenceAt) : null;
+          if (!nextDate || Number.isNaN(nextDate.getTime())) return null;
+          const location = lesson.schoolName?.trim() || lesson.location?.trim() || 'Konum yakında açıklanacak';
+          return {
+            entityId: lesson.id,
+            id: `lesson:${lesson.id}`,
+            title: lesson.title?.trim() || 'Ders',
+            location,
+            date: `${nextDate.toLocaleString('tr-TR', {
+              weekday: 'long',
+              day: '2-digit',
+              month: 'long',
+              hour: '2-digit',
+              minute: '2-digit',
+            })} · ${lesson.level || 'Tüm Seviyeler'}`,
+            day: nextDate.toLocaleDateString('tr-TR', { day: '2-digit' }),
+            month: nextDate.toLocaleDateString('tr-TR', { month: 'short' }).toUpperCase(),
+            image: lesson.imageUrl?.trim() || '',
+            isFavorite: true,
+            isPopular: false,
+            attendees: 0,
+            attendeeAvatars: lesson.instructorAvatarUrl ? [lesson.instructorAvatarUrl] : [],
+            isDanceStar: false,
+            badgeLabel: lesson.schoolId && favoriteSchoolIds.has(lesson.schoolId) ? 'Favori okul dersi' : undefined,
+            schoolId: lesson.schoolId,
+            rawDate: nextDate,
+          } as FavoriteEventItem;
+        })
+        .filter((item): item is FavoriteEventItem => item !== null)
+        .sort((a, b) => a.rawDate.getTime() - b.rawDate.getTime());
+
+      setFavoriteEvents(mappedEvents);
+      setFavoriteLessons(mappedLessons);
     } catch (e: any) {
-      setFavoriteSchoolCount(0);
-      setSchoolError(e?.message || 'Favoriler yüklenemedi');
+      setFavoriteSchools([]);
+      setFavoriteEvents([]);
+      setFavoriteLessons([]);
+      const message = e?.message || 'Favoriler yüklenemedi';
+      setSchoolError(message);
+      setEventError(message);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -50,51 +189,36 @@ export const FavoritesHubScreen: React.FC<Props> = ({ navigation }) => {
     load().finally(() => setRefreshing(false));
   }, [load]);
 
-  const CardRow = ({
-    title,
-    subtitle,
-    icon,
-    onPress,
-  }: {
-    title: string;
-    subtitle: string;
-    icon: any;
-    onPress: () => void;
-  }) => (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.8}
-      style={{
-        backgroundColor: '#311831',
-        borderRadius: radius.xl,
-        borderWidth: 1,
-        borderColor: colors.cardBorder,
-        padding: spacing.lg,
-        flexDirection: 'row',
-        alignItems: 'center',
-      }}
-    >
-      <View
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: 22,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: 'rgba(238,43,238,0.16)',
-        }}
-      >
-        <Icon name={icon} size={22} color="#EE2AEE" />
-      </View>
-      <View style={{ marginLeft: spacing.md, flex: 1 }}>
-        <Text style={[typography.bodyMedium, { color: '#FFFFFF' }]}>{title}</Text>
-        <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 2 }]} numberOfLines={1}>
-          {subtitle}
-        </Text>
-      </View>
-      <Icon name="chevron-right" size={22} color="#FFFFFF" />
-    </TouchableOpacity>
+  const removeEventFavorite = useCallback(
+    async (eventId: string) => {
+      try {
+        await removeFavoriteEvent(eventId);
+        setFavoriteEvents((prev) => prev.filter((event) => event.entityId !== eventId));
+        setFavoriteLessons((prev) => prev.filter((event) => event.entityId !== eventId));
+      } catch (e: any) {
+        setEventError(e?.message || 'Favori işlemi tamamlanamadı');
+      }
+    },
+    [],
   );
+
+  if (loading) {
+    return <LoadingSpinner fullScreen message="Favoriler yükleniyor..." />;
+  }
+
+  const totalCount = favoriteSchools.length + favoriteEvents.length + favoriteLessons.length;
+  const hasContent = totalCount > 0;
+  const showSchools = sectionFilter === 'all' || sectionFilter === 'schools';
+  const showEvents = sectionFilter === 'all' || sectionFilter === 'events';
+  const showLessons = sectionFilter === 'all' || sectionFilter === 'lessons';
+  const sectionEmpty =
+    sectionFilter === 'schools'
+      ? favoriteSchools.length === 0
+      : sectionFilter === 'events'
+        ? favoriteEvents.length === 0
+        : sectionFilter === 'lessons'
+          ? favoriteLessons.length === 0
+          : false;
 
   return (
     <Screen>
@@ -106,37 +230,108 @@ export const FavoritesHubScreen: React.FC<Props> = ({ navigation }) => {
         }
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[typography.label, { color: '#FFFFFF', marginLeft: spacing.sm, marginBottom: spacing.sm }]}>
-          Kategoriler
-        </Text>
+        <View style={{ marginBottom: spacing.lg }}>
+          <Text style={[typography.bodySmallBold, { color: '#FFFFFF' }]}>{totalCount} Favori</Text>
+          <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 2 }]}>
+            Okullar, etkinlikler ve dersler tek yerde.
+          </Text>
+        </View>
 
-        <View style={{ gap: spacing.md }}>
-          <CardRow
-            title="Favori Okullar"
-            subtitle={
-              schoolError
-                ? schoolError
-                : favoriteSchoolCount == null
-                  ? 'Yükleniyor...'
-                  : `${favoriteSchoolCount} okul`
-            }
-            icon="school-outline"
-            onPress={() => navigation.navigate('FavoriteSchools')}
-          />
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: spacing.xl, gap: spacing.sm }}
+          style={{ marginBottom: spacing.xl }}
+        >
+          <Chip label="Hepsi" selected={sectionFilter === 'all'} onPress={() => setSectionFilter('all')} icon="heart-outline" />
+          <Chip label="Okullar" selected={sectionFilter === 'schools'} onPress={() => setSectionFilter('schools')} icon="school-outline" />
+          <Chip label="Etkinlikler" selected={sectionFilter === 'events'} onPress={() => setSectionFilter('events')} icon="calendar-outline" />
+          <Chip label="Dersler" selected={sectionFilter === 'lessons'} onPress={() => setSectionFilter('lessons')} icon="school-outline" />
+        </ScrollView>
 
-          <CardRow
-            title="Favori Etkinlikler"
-            subtitle={`${favoriteEventsCount} etkinlik`}
+        {showSchools && favoriteSchools.length > 0 ? (
+          <View style={{ marginBottom: spacing.xl }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+              <Text style={[typography.label, { color: '#FFFFFF' }]}>Okullar</Text>
+              <Text style={[typography.caption, { color: colors.textSecondary }]}>{favoriteSchools.length}</Text>
+            </View>
+            {schoolError ? (
+              <Text style={[typography.caption, { color: colors.error, marginBottom: spacing.sm }]}>{schoolError}</Text>
+            ) : null}
+            {favoriteSchools.map((school) => (
+              <View key={school.id} style={{ marginBottom: spacing.lg }}>
+                <SchoolCard
+                  school={school}
+                  onPress={() => navigation.navigate('SchoolDetails', { id: school.id })}
+                  cardBackgroundColor="#341A32"
+                />
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {showEvents && favoriteEvents.length > 0 ? (
+          <View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+              <Text style={[typography.label, { color: '#FFFFFF' }]}>Etkinlikler</Text>
+              <Text style={[typography.caption, { color: colors.textSecondary }]}>{favoriteEvents.length}</Text>
+            </View>
+            {eventError ? (
+              <Text style={[typography.caption, { color: colors.error, marginBottom: spacing.sm }]}>{eventError}</Text>
+            ) : null}
+            {favoriteEvents.map((event) => (
+              <View key={event.entityId} style={{ marginBottom: spacing.lg }}>
+                <MyEventCard
+                  event={event}
+                  onPress={() => navigation.navigate('EventDetails', { id: event.entityId, fromFavorites: true })}
+                  onFavoritePress={() => void removeEventFavorite(event.entityId)}
+                />
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {showLessons && favoriteLessons.length > 0 ? (
+          <View style={{ marginTop: spacing.xl }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+              <Text style={[typography.label, { color: '#FFFFFF' }]}>Dersler</Text>
+              <Text style={[typography.caption, { color: colors.textSecondary }]}>{favoriteLessons.length}</Text>
+            </View>
+            {eventError ? (
+              <Text style={[typography.caption, { color: colors.error, marginBottom: spacing.sm }]}>{eventError}</Text>
+            ) : null}
+            {favoriteLessons.map((lesson) => (
+              <View key={lesson.entityId} style={{ marginBottom: spacing.lg }}>
+                <MyEventCard
+                  event={lesson}
+                  onPress={() => navigation.navigate('ClassDetails', { id: lesson.entityId })}
+                  onFavoritePress={() => void removeEventFavorite(lesson.entityId)}
+                />
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {!hasContent ? (
+          <EmptyState
             icon="heart-outline"
-            onPress={() => navigation.navigate('MainTabs', { screen: 'Favorites' })}
+            title="Henüz favori yok."
+            subtitle="Okul veya etkinliklere kalp ikonundan favori ekleyebilirsin."
           />
-        </View>
-
-        <View style={{ marginTop: spacing.xl }}>
-          <EmptyState icon="heart-outline" title="Favoriler burada toplanır." subtitle="Okul veya etkinlikleri favoriye ekledikçe bu sayfa dolacak." />
-        </View>
+        ) : sectionEmpty ? (
+          <EmptyState
+            icon={sectionFilter === 'schools' ? 'school-outline' : sectionFilter === 'lessons' ? 'school-outline' : 'calendar-blank-outline'}
+            title={
+              sectionFilter === 'schools'
+                ? 'Bu bölümde okul yok.'
+                : sectionFilter === 'lessons'
+                  ? 'Bu bölümde ders yok.'
+                  : 'Bu bölümde etkinlik yok.'
+            }
+            subtitle="Başka filtre seçebilir veya favori ekleyebilirsin."
+          />
+        ) : null}
       </ScrollView>
     </Screen>
   );
 };
-

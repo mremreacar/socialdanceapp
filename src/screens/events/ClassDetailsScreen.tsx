@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Image } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Image, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
@@ -22,6 +22,7 @@ import {
 import { ApiError, hasSupabaseConfig } from '../../services/api/apiClient';
 import { instructorLessonReservationsService } from '../../services/api/instructorLessonReservations';
 import { storage } from '../../services/storage';
+import { addFavoriteEvent, isEventFavorited, removeFavoriteEvent } from '../../services/api/eventFavorites';
 import {
   instructorLocationLabel,
   instructorWeekdayLabel,
@@ -62,6 +63,7 @@ export const ClassDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const [lesson, setLesson] = useState<LessonDetailVm | null>(null);
   const [joining, setJoining] = useState(false);
   const [hasJoined, setHasJoined] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [leaveModalVisible, setLeaveModalVisible] = useState(false);
 
@@ -101,6 +103,27 @@ export const ClassDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       cancelled = true;
     };
   }, [route.params.id]);
+
+  useEffect(() => {
+    if (!lesson?.id || !hasSupabaseConfig()) {
+      setIsFavorite(false);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const favorite = await isEventFavorited(lesson.id);
+        if (!cancelled) setIsFavorite(favorite);
+      } catch {
+        if (!cancelled) setIsFavorite(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lesson?.id]);
 
   const locationLabel = useMemo(() => (lesson ? buildLessonLocationLabel(lesson) : ''), [lesson]);
   const infoItems = useMemo(() => {
@@ -182,6 +205,23 @@ export const ClassDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
+  const toggleFavorite = async () => {
+    if (!lesson) return;
+    const next = !isFavorite;
+    setIsFavorite(next);
+    try {
+      if (next) {
+        await addFavoriteEvent(lesson.id);
+      } else {
+        await removeFavoriteEvent(lesson.id);
+      }
+    } catch (error: unknown) {
+      setIsFavorite(!next);
+      const message = error instanceof ApiError ? error.message : error instanceof Error ? error.message : 'Favori işlemi tamamlanamadı.';
+      Alert.alert('Favoriler', message);
+    }
+  };
+
   return (
     <Screen>
       <Header title="Ders Detayı" showBack />
@@ -213,6 +253,15 @@ export const ClassDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 },
               ]}
             >
+              <View style={styles.favoriteButtonRow}>
+                <TouchableOpacity
+                  onPress={() => void toggleFavorite()}
+                  activeOpacity={0.8}
+                  style={[styles.favoriteButton, { backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: radius.full }]}
+                >
+                  <Icon name={isFavorite ? 'heart' : 'heart-outline'} size={22} color={isFavorite ? '#EE2AEE' : '#FFFFFF'} />
+                </TouchableOpacity>
+              </View>
               {lesson.imageUrl ? (
                 <Image
                   source={{ uri: lesson.imageUrl }}
@@ -388,6 +437,17 @@ export const ClassDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   heroCard: {
     borderWidth: 1,
+  },
+  favoriteButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 12,
+  },
+  favoriteButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   heroCover: {
     width: '100%',

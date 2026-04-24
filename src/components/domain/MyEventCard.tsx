@@ -20,6 +20,7 @@ export interface MyEventCardData {
   attendeeAvatars?: string[];
   isDanceStar?: boolean;
   distance?: string;
+  badgeLabel?: string;
 }
 
 interface MyEventCardProps {
@@ -82,6 +83,23 @@ export const MyEventCard: React.FC<MyEventCardProps> = ({
             <Text style={styles.popularText}>Popüler</Text>
           </View>
         )}
+        {event.badgeLabel ? (
+          <View
+            style={[
+              styles.secondaryBadge,
+              {
+                backgroundColor: 'rgba(17, 24, 39, 0.72)',
+                borderRadius: radius.full,
+                top: event.isPopular ? 48 : 12,
+              },
+            ]}
+          >
+            <Icon name="school-outline" size={12} color="#FFF" />
+            <Text style={styles.secondaryBadgeText} numberOfLines={1}>
+              {event.badgeLabel}
+            </Text>
+          </View>
+        ) : null}
         <TouchableOpacity
           onPress={(e) => {
             e.stopPropagation();
@@ -202,6 +220,22 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 12,
     fontWeight: '600',
+  },
+  secondaryBadge: {
+    position: 'absolute',
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 4,
+    maxWidth: '72%',
+  },
+  secondaryBadgeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+    flexShrink: 1,
   },
   favButton: {
     position: 'absolute',

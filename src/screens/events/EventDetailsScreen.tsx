@@ -18,6 +18,7 @@ import { ApiError } from '../../services/api/apiClient';
 import { getSchoolEventDetailsById, type PublishStatus } from '../../services/api/schoolEvents';
 import { schoolEventAttendeesService, type EventAttendee } from '../../services/api/schoolEventAttendees';
 import { followService } from '../../services/api/follows';
+import { addFavoriteEvent, isEventFavorited, removeFavoriteEvent } from '../../services/api/eventFavorites';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'EventDetails'>;
 
@@ -169,6 +170,27 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         setLoading(false);
       });
   }, [route.params.id, route.params.includeUnpublished]);
+
+  useEffect(() => {
+    if (!isUuid(route.params.id)) {
+      setIsFavorite(false);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const favorited = await isEventFavorited(route.params.id);
+        if (!cancelled) setIsFavorite(favorited);
+      } catch {
+        if (!cancelled) setIsFavorite(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [route.params.id]);
 
   const eventTitle = remoteEvent?.title ?? 'Etkinlik';
   const eventDateLabel = remoteEvent?.dateLabel ?? '-';
@@ -371,6 +393,27 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }).catch(() => {});
   };
 
+  const toggleFavorite = async () => {
+    const next = !isFavorite;
+    setIsFavorite(next);
+    try {
+      if (isDbEvent) {
+        if (next) {
+          await addFavoriteEvent(route.params.id);
+        } else {
+          await removeFavoriteEvent(route.params.id);
+        }
+      }
+      if (next && effectiveRawDate) {
+        await scheduleEventReminder(eventTitle, effectiveRawDate);
+      }
+    } catch (error: unknown) {
+      setIsFavorite(!next);
+      const message = error instanceof ApiError ? error.message : error instanceof Error ? error.message : 'Favori işlemi tamamlanamadı.';
+      Alert.alert('Favoriler', message);
+    }
+  };
+
   const headerRight = (
     <View style={styles.headerRightStack}>
       <TouchableOpacity
@@ -381,11 +424,7 @@ export const EventDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         <Icon name="share-variant" size={22} color="#FFFFFF" />
       </TouchableOpacity>
       <TouchableOpacity
-        onPress={async () => {
-          const next = !isFavorite;
-          setIsFavorite(next);
-          if (next && effectiveRawDate) await scheduleEventReminder(eventTitle, effectiveRawDate);
-        }}
+        onPress={() => void toggleFavorite()}
         style={[styles.headerOverlayBtn, { borderRadius: radius.full, marginTop: 8 }]}
         activeOpacity={0.7}
       >

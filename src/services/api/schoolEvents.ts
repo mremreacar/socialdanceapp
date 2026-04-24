@@ -446,6 +446,7 @@ export async function getSchoolEventDetailsById(
 
 export async function createSchoolEvent(input: CreateSchoolEventInput): Promise<SchoolEventRow> {
   return await withAuthorizedUserRequest(async (accessToken) => {
+    const me = await getMyUserId(accessToken);
     let response: SchoolEventRow | SchoolEventRow[];
     try {
       response = await supabaseRestRequest<SchoolEventRow | SchoolEventRow[]>(
@@ -456,7 +457,10 @@ export async function createSchoolEvent(input: CreateSchoolEventInput): Promise<
           headers: {
             Prefer: 'return=representation',
           },
-          body: buildSchoolEventPayload(input),
+          body: {
+            ...buildSchoolEventPayload(input),
+            created_by: me,
+          },
         },
       );
     } catch (error) {

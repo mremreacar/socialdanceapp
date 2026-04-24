@@ -25,7 +25,6 @@ export type MainStackParamList = {
   EventDetails: { id: string; fromFavorites?: boolean; includeUnpublished?: boolean };
   SchoolDetails: { id: string };
   SchoolAdminPanel: { schoolId: string };
-  FavoriteSchools: undefined;
   FavoritesHub: undefined;
   ClassDetails: { id: string };
   DanceStar: {

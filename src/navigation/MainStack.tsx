@@ -22,7 +22,6 @@ import { SettingsHelpScreen } from '../screens/social/SettingsHelpScreen';
 import { SettingsAboutScreen } from '../screens/social/SettingsAboutScreen';
 import { BlockedUsersScreen } from '../screens/social/BlockedUsersScreen';
 import { ViewUserProfileScreen } from '../screens/social/ViewUserProfileScreen';
-import { FavoriteSchoolsScreen } from '../screens/social/FavoriteSchoolsScreen';
 import { FavoritesHubScreen } from '../screens/social/FavoritesHubScreen';
 import { UserPanelScreen } from '../screens/social/UserPanelScreen';
 import { LessonsScreen } from '../screens/social/LessonsScreen';
@@ -39,7 +38,6 @@ export const MainStack: React.FC = () => {
       <Stack.Screen name="EventDetails" component={EventDetailsScreen} />
       <Stack.Screen name="SchoolDetails" component={SchoolDetailsScreen} />
       <Stack.Screen name="SchoolAdminPanel" component={SchoolAdminPanelScreen} />
-      <Stack.Screen name="FavoriteSchools" component={FavoriteSchoolsScreen} />
       <Stack.Screen name="FavoritesHub" component={FavoritesHubScreen} />
       <Stack.Screen name="ClassDetails" component={ClassDetailsScreen} />
       <Stack.Screen name="DanceStar" component={DanceStarScreen} />

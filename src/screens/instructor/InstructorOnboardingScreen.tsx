@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Image } from 'expo-image';
 import { useTheme } from '../../theme';
 import { Screen } from '../../components/layout/Screen';
 import { Header } from '../../components/layout/Header';
@@ -24,10 +26,10 @@ import {
   InstructorProfileModel,
   InstructorWorkMode,
 } from '../../services/api/instructorProfile';
+import { instructorMediaService, InstructorMediaItem } from '../../services/api/instructorMedia';
 import { InstructorLessonsTab } from './InstructorLessonsTab';
 import { InstructorStudentsTab } from './InstructorStudentsTab';
 import { InstructorCalendarTab } from './InstructorCalendarTab';
-import { InstructorMediaTab } from './InstructorMediaTab';
 
 const WORK_OPTIONS: { mode: InstructorWorkMode; label: string; hint: string }[] = [
   { mode: 'individual', label: 'Bireysel', hint: 'Kendi adıma ders veriyorum' },
@@ -35,13 +37,12 @@ const WORK_OPTIONS: { mode: InstructorWorkMode; label: string; hint: string }[] 
   { mode: 'both', label: 'Her ikisi', hint: 'Hem bireysel hem kurumla çalışıyorum' },
 ];
 
-type InstructorTabId = 'profile' | 'lessons' | 'calendar' | 'media' | 'students';
+type InstructorTabId = 'profile' | 'lessons' | 'calendar' | 'students';
 
 const INSTRUCTOR_TABS: { id: InstructorTabId; label: string }[] = [
   { id: 'profile', label: 'Profil' },
   { id: 'lessons', label: 'Dersler' },
   { id: 'calendar', label: 'Takvim' },
-  { id: 'media', label: 'Medya' },
   { id: 'students', label: 'Öğrenciler' },
 ];
 
@@ -80,6 +81,201 @@ function LockedTabBody(props: {
   );
 }
 
+function MediaSection() {
+  const { colors, spacing, typography, radius } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
+  const horizontalPad = spacing.lg;
+  const tileSize = (windowWidth - horizontalPad * 2 - 8 * 2) / 3;
+
+  const [items, setItems] = useState<InstructorMediaItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<InstructorMediaItem | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErrorBanner(null);
+    try {
+      const list = await instructorMediaService.listMine();
+      setItems(list);
+    } catch (e: unknown) {
+      setItems([]);
+      setErrorBanner(e instanceof Error ? e.message : 'Liste yüklenemedi.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  const openPickerAndUpload = () => {
+    setTimeout(async () => {
+      let ImagePicker: typeof import('expo-image-picker') | null = null;
+      try {
+        ImagePicker = await import('expo-image-picker');
+      } catch {
+        setErrorBanner('Galeri bu ortamda kullanılamıyor. Fotoğraflar iznini kontrol edin veya native build deneyin.');
+        return;
+      }
+      try {
+        if (!ImagePicker?.requestMediaLibraryPermissionsAsync) return;
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          setErrorBanner('Fotoğraf eklemek için galeri izni gerekir.');
+          return;
+        }
+        if (!ImagePicker?.launchImageLibraryAsync) return;
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: false,
+          quality: 0.85,
+        });
+        if (result.canceled || !result.assets?.[0]?.uri) return;
+        setUploading(true);
+        setErrorBanner(null);
+        const created = await instructorMediaService.addFromLocalUri(result.assets[0].uri);
+        setItems((prev) => [created, ...prev]);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/cancel|User cancelled/i.test(msg)) return;
+        setErrorBanner(msg || 'Yükleme başarısız.');
+      } finally {
+        setUploading(false);
+      }
+    }, 0);
+  };
+
+  const onConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setRemovingId(deleteTarget.id);
+    setErrorBanner(null);
+    try {
+      await instructorMediaService.remove(deleteTarget.id);
+      setItems((prev) => prev.filter((x) => x.id !== deleteTarget.id));
+    } catch (e: unknown) {
+      setErrorBanner(e instanceof Error ? e.message : 'Silinemedi.');
+    } finally {
+      setRemovingId(null);
+      setDeleteTarget(null);
+    }
+  };
+
+  const atLimit = items.length >= instructorMediaService.maxItems;
+  const mediaRows = useMemo(() => {
+    const rows: React.ReactElement[] = [];
+    for (let index = 0; index < items.length; index += 3) {
+      const rowItems = items.slice(index, index + 3);
+      rows.push(
+        <View key={`row-${index}`} style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+          {rowItems.map((item) => (
+            <View key={item.id} style={{ width: tileSize }}>
+              <View
+                style={{
+                  width: tileSize,
+                  height: tileSize,
+                  borderRadius: radius.md,
+                  overflow: 'hidden',
+                  backgroundColor: '#311831',
+                  borderWidth: 1,
+                  borderColor: colors.cardBorder,
+                }}
+              >
+                <Image source={{ uri: item.publicUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
+                <TouchableOpacity
+                  style={[styles.removeBtn, { backgroundColor: `${colors.background}CC` }]}
+                  onPress={() => setDeleteTarget(item)}
+                  disabled={removingId === item.id}
+                  hitSlop={8}
+                >
+                  {removingId === item.id ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Icon name="close" size={18} color="#FFFFFF" />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+        </View>,
+      );
+    }
+    return rows;
+  }, [colors.background, colors.cardBorder, colors.primary, items, radius.md, removingId, tileSize]);
+
+  if (loading && items.length === 0) {
+    return (
+      <View style={[styles.centered, { paddingVertical: spacing.xl }]}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ marginTop: spacing.lg }}>
+      <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Medya</Text>
+      <Text style={[typography.bodySmall, { color: colors.textSecondary, marginBottom: spacing.md }]}>
+        Keşfette görünürken profilinizi destekleyecek fotoğraflar ekleyin (en fazla {instructorMediaService.maxItems} adet).
+      </Text>
+
+      {errorBanner ? (
+        <Text style={[typography.caption, { color: colors.orange, marginBottom: spacing.sm }]}>{errorBanner}</Text>
+      ) : null}
+
+      <Button
+        title={uploading ? 'Yükleniyor…' : 'Galeriden fotoğraf ekle'}
+        onPress={() => void openPickerAndUpload()}
+        loading={uploading}
+        disabled={uploading || atLimit}
+        fullWidth
+      />
+
+      {atLimit ? (
+        <Text style={[typography.caption, { color: colors.textTertiary, marginTop: spacing.sm }]}>
+          Limit doldu. Yeni eklemek için mevcut görsellerden birini silin.
+        </Text>
+      ) : null}
+
+      <View style={{ marginTop: spacing.md }}>
+        {items.length === 0 ? (
+          <View
+            style={{
+              paddingVertical: spacing.xl,
+              alignItems: 'center',
+              backgroundColor: '#311831',
+              borderRadius: radius.lg,
+              borderWidth: 1,
+              borderColor: colors.cardBorder,
+            }}
+          >
+            <Icon name="image-multiple-outline" size={40} color={colors.textTertiary} />
+            <Text style={[typography.bodyMedium, { color: colors.textSecondary, marginTop: spacing.md }]}>
+              Henüz fotoğraf yok
+            </Text>
+          </View>
+        ) : (
+          <View>{mediaRows}</View>
+        )}
+      </View>
+
+      <ConfirmModal
+        visible={!!deleteTarget}
+        title="Fotoğrafı sil"
+        message="Bu görsel kalıcı olarak kaldırılır."
+        confirmLabel="Sil"
+        cancelLabel="Vazgeç"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => void onConfirmDelete()}
+      />
+    </View>
+  );
+}
+
 export const InstructorOnboardingScreen: React.FC = () => {
   const { colors, spacing, typography, radius } = useTheme();
   const { catalog, loading: catalogLoading, error: catalogError, reload: reloadCatalog, compactBySubId } = useDanceCatalog();
@@ -94,6 +290,8 @@ export const InstructorOnboardingScreen: React.FC = () => {
   const [isVisible, setIsVisible] = useState(true);
   const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null);
   const [showSpecialtyPicker, setShowSpecialtyPicker] = useState(false);
+  const [showWorkModePicker, setShowWorkModePicker] = useState(false);
+  const profileScrollRef = useRef<ScrollView>(null);
 
   const load = useCallback(async () => {
     if (!hasSupabaseConfig()) {
@@ -190,6 +388,11 @@ export const InstructorOnboardingScreen: React.FC = () => {
     [specialtyIds, specialtyLabelById],
   );
 
+  const selectedWorkModeLabel = useMemo(
+    () => WORK_OPTIONS.find((option) => option.mode === workMode)?.label ?? 'Çalışma şekli seçin',
+    [workMode],
+  );
+
   const onSave = async () => {
     if (!hasSupabaseConfig()) {
       setAlertModal({
@@ -234,6 +437,7 @@ export const InstructorOnboardingScreen: React.FC = () => {
     if (activeTab === 'profile') {
       return (
         <ScrollView
+          ref={profileScrollRef}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -243,28 +447,100 @@ export const InstructorOnboardingScreen: React.FC = () => {
           </Text>
 
           <Text style={[typography.label, { color: '#FFFFFF', marginBottom: spacing.sm }]}>Çalışma şekli</Text>
-          <View style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
-            {WORK_OPTIONS.map((opt) => {
-              const selected = workMode === opt.mode;
-              return (
-                <TouchableOpacity
-                  key={opt.mode}
-                  activeOpacity={0.8}
-                  onPress={() => setWorkMode(opt.mode)}
-                  style={{
-                    padding: spacing.md,
-                    borderRadius: radius.lg,
-                    borderWidth: 1,
-                    borderColor: selected ? colors.primary : colors.cardBorder,
-                    backgroundColor: selected ? `${colors.primary}18` : '#311831',
-                  }}
-                >
-                  <Text style={[typography.bodyMedium, { color: '#FFFFFF' }]}>{opt.label}</Text>
-                  <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>{opt.hint}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <TouchableOpacity
+            onPress={() => setShowWorkModePicker(true)}
+            activeOpacity={0.85}
+            style={[
+              styles.selectBox,
+              {
+                backgroundColor: '#311831',
+                borderRadius: radius.xl,
+                borderColor: colors.inputBorder,
+                paddingHorizontal: spacing.lg,
+                paddingVertical: spacing.md,
+                marginBottom: spacing.lg,
+              },
+            ]}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[typography.captionBold, { color: colors.textTertiary, marginBottom: 2 }]}>Çalışma şekli seç</Text>
+              <Text style={[typography.bodySmall, { color: '#FFFFFF' }]} numberOfLines={1}>
+                {selectedWorkModeLabel}
+              </Text>
+            </View>
+            <Icon name="chevron-down" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          <Modal
+            visible={showWorkModePicker}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowWorkModePicker(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <TouchableOpacity
+                activeOpacity={1}
+                style={StyleSheet.absoluteFill}
+                onPress={() => setShowWorkModePicker(false)}
+              />
+              <View
+                style={[
+                  styles.pickerSheet,
+                  {
+                    backgroundColor: '#1B1022',
+                    borderRadius: radius.xl,
+                    borderColor: colors.cardBorder,
+                    padding: spacing.lg,
+                  },
+                ]}
+              >
+                <View style={styles.pickerHeader}>
+                  <Text style={[typography.bodyBold, { color: '#FFFFFF' }]}>Çalışma şekli seçin</Text>
+                  <TouchableOpacity onPress={() => setShowWorkModePicker(false)} hitSlop={12}>
+                    <Icon name="close" size={20} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+                  {WORK_OPTIONS.map((opt) => {
+                    const selected = workMode === opt.mode;
+                    return (
+                      <TouchableOpacity
+                        key={opt.mode}
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          setWorkMode(opt.mode);
+                          setShowWorkModePicker(false);
+                        }}
+                        style={[
+                          styles.pickerRow,
+                          {
+                            backgroundColor: selected ? 'rgba(255,255,255,0.12)' : 'transparent',
+                            borderBottomColor: 'rgba(255,255,255,0.08)',
+                            paddingVertical: spacing.md,
+                          },
+                        ]}
+                      >
+                        <View style={{ flex: 1, paddingRight: spacing.md }}>
+                          <Text style={[typography.bodySmall, { color: '#FFFFFF' }]}>{opt.label}</Text>
+                          <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 4 }]}>{opt.hint}</Text>
+                        </View>
+                        <Icon
+                          name={selected ? 'check-circle' : 'checkbox-blank-circle-outline'}
+                          size={20}
+                          color={selected ? colors.primary : '#9CA3AF'}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={{ marginTop: spacing.md }}>
+                  <Button title="Tamam" onPress={() => setShowWorkModePicker(false)} fullWidth />
+                </View>
+              </View>
+            </View>
+          </Modal>
 
           <Input label="Kısa başlık" value={headline} onChangeText={setHeadline} placeholder="Örn. Bachata & salsa eğitmeni" />
           <View style={{ height: spacing.md }} />
@@ -436,7 +712,7 @@ export const InstructorOnboardingScreen: React.FC = () => {
 
               <TouchableOpacity
                 activeOpacity={0.85}
-                onPress={() => setActiveTab('media')}
+                onPress={() => profileScrollRef.current?.scrollToEnd({ animated: true })}
                 style={[
                   styles.quickCard,
                   {
@@ -463,6 +739,8 @@ export const InstructorOnboardingScreen: React.FC = () => {
           <View style={{ marginTop: spacing.xl }}>
             <Button title={existing ? 'Profili kaydet' : 'Profili oluştur'} onPress={() => void onSave()} loading={saving} fullWidth />
           </View>
+
+          <MediaSection />
         </ScrollView>
       );
     }
@@ -484,9 +762,6 @@ export const InstructorOnboardingScreen: React.FC = () => {
     }
     if (activeTab === 'calendar') {
       return <InstructorCalendarTab />;
-    }
-    if (activeTab === 'media') {
-      return <InstructorMediaTab />;
     }
     if (activeTab === 'students') {
       return <InstructorStudentsTab />;
@@ -587,6 +862,16 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
