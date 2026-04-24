@@ -264,6 +264,7 @@ export const MyEventsScreen: React.FC = () => {
     const normalizedQuery = normalizeText(searchQuery);
 
     const list = events.filter((event) => {
+      if (event.rawDate < now) return false;
       const eventDay = new Date(event.rawDate.getFullYear(), event.rawDate.getMonth(), event.rawDate.getDate());
       if (activeTimeFilter === 'Bugün' && eventDay.getTime() !== startOfToday.getTime()) return false;
       if (activeTimeFilter === 'Bu Hafta') {
@@ -290,6 +291,9 @@ export const MyEventsScreen: React.FC = () => {
     }
 
     return list.sort((a, b) => {
+      const timeDiff = a.rawDate.getTime() - b.rawDate.getTime();
+      if (timeDiff !== 0) return timeDiff;
+
       const distanceA =
         a.latitude != null && a.longitude != null
           ? getDistanceKm(userCoords.latitude, userCoords.longitude, a.latitude, a.longitude)
@@ -304,7 +308,7 @@ export const MyEventsScreen: React.FC = () => {
       }
       if (distanceA != null && distanceB == null) return -1;
       if (distanceA == null && distanceB != null) return 1;
-      return a.rawDate.getTime() - b.rawDate.getTime();
+      return 0;
     });
   }, [activeCityFilter, activeReservationFilter, activeTimeFilter, events, joinedEventIds, searchQuery, userCoords]);
 

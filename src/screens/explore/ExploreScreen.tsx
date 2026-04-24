@@ -109,6 +109,7 @@ function formatEventDateLabel(date: Date): string {
     weekday: 'long',
     day: '2-digit',
     month: 'long',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -119,6 +120,10 @@ function formatCountPill(value: number): string {
 }
 
 function compareEventsByProximityOrDate(a: Event, b: Event, userCoords: { latitude: number; longitude: number }): number {
+  const aTime = a.rawDate?.getTime() ?? Number.POSITIVE_INFINITY;
+  const bTime = b.rawDate?.getTime() ?? Number.POSITIVE_INFINITY;
+  if (aTime !== bTime) return aTime - bTime;
+
   const distanceA =
     a.latitude != null && a.longitude != null
       ? getDistanceKm(userCoords.latitude, userCoords.longitude, a.latitude, a.longitude)
@@ -133,7 +138,7 @@ function compareEventsByProximityOrDate(a: Event, b: Event, userCoords: { latitu
   }
   if (distanceA != null && distanceB == null) return -1;
   if (distanceA == null && distanceB != null) return 1;
-  return (a.rawDate?.getTime() ?? Number.POSITIVE_INFINITY) - (b.rawDate?.getTime() ?? Number.POSITIVE_INFINITY);
+  return 0;
 }
 
 type ExploreLessonItem = PublishedInstructorLessonListItem & {
@@ -282,6 +287,8 @@ export const ExploreScreen: React.FC = () => {
 
     const list = events.filter((event) => {
       const eventDate = new Date(event.rawDate!);
+      if (Number.isNaN(eventDate.getTime())) return false;
+      if (eventDate < now) return false;
       const startOfEventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
 
       if (activeFilter === 'Bugün') {
